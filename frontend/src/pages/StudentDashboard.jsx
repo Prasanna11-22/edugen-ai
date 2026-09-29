@@ -219,12 +219,12 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
           )}
         </div>
 
-        {/* Approved Learning Materials (Explanation & Revision Sheets) */}
+        {/* Approved Full Study Material Packs */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-neon-orange" />
-              <h2 className="text-lg font-bold text-white">Approved Study Materials</h2>
+              <h2 className="text-lg font-bold text-white">Approved Full Study Packs</h2>
             </div>
             <Badge variant="approved">Server-Side Gated</Badge>
           </div>
@@ -235,35 +235,61 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               <p className="text-xs text-slate-400">No approved study packs published yet.</p>
             </GlassCard>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3.5">
               {materials.map((m) => (
                 <div
-                  key={m.version_id}
+                  key={m.unit_id || m.version_id}
                   onClick={() => onViewMaterial(m)}
-                  className="rounded-2xl glass-panel p-5 border border-slate-800 hover:border-neon-orange/40 transition-all cursor-pointer group space-y-2"
+                  className="rounded-2xl glass-panel p-5 sm:p-6 border border-slate-800/90 hover:border-neon-orange/50 transition-all cursor-pointer group space-y-3.5 relative overflow-hidden bg-dark-900/80 hover:bg-dark-900"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="text-[10px] font-mono text-neon-amber uppercase block">
-                        {m.unit_title} · {m.type.replace(/_/g, ' ')}
-                      </span>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+                          Full Study Pack
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-400">{m.unit_title}</span>
+                      </div>
                       <h4 className="text-base font-bold text-white group-hover:text-neon-glow transition-colors">
-                        {m.content?.title || m.objective_text}
+                        {m.content?.title || `Comprehensive Study Material: ${m.unit_title}`}
                       </h4>
                     </div>
-                    <Badge variant="royal">v{m.version_no}</Badge>
+                    <Badge variant="royal">v{m.version_no || 1}</Badge>
                   </div>
 
-                  <p className="text-xs text-slate-400 line-clamp-2">
-                    {m.content?.explanation || m.content?.summary || 'Authoritative grounded learning pack approved by instructor.'}
+                  <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed font-sans">
+                    {m.content?.explanation || m.content?.summary || 'All-in-one learning pack containing core concept explanations, worked step-by-step problems, high-yield exam recall points, practice questions, and canonical glossary terms.'}
                   </p>
 
-                  <div className="pt-2 flex items-center justify-between text-xs text-slate-500 border-t border-slate-800/60">
+                  {/* Included Pack Components Pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                      <FileCheck className="w-3 h-3 text-emerald-400" /> Explanation
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-neon-orange" /> Worked Steps
+                    </span>
+                    <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                      <Award className="w-3 h-3 text-neon-amber" /> Revision & Rules
+                    </span>
+                    {m.content?.questions && m.content.questions.length > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                        <GraduationCap className="w-3 h-3 text-sky-400" /> {m.content.questions.length} Practice Qs
+                      </span>
+                    )}
+                    {m.content?.glossary && m.content.glossary.length > 0 && (
+                      <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
+                        <BookOpen className="w-3 h-3 text-violet-400" /> {m.content.glossary.length} Terms
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="pt-3 flex items-center justify-between text-xs text-slate-500 border-t border-slate-800/80">
                     <span className="font-mono text-[11px] text-slate-400">
                       Citations: {m.content?.chunk_citations?.length || 0} Chunks
                     </span>
-                    <span className="text-neon-orange group-hover:text-neon-amber font-semibold flex items-center gap-1">
-                      Read Pack & Export PDF <ArrowRight className="w-3.5 h-3.5" />
+                    <span className="text-neon-orange group-hover:text-neon-amber font-bold flex items-center gap-1 text-xs">
+                      Open Full Study Pack & PDF <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </span>
                   </div>
                 </div>

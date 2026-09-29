@@ -85,30 +85,92 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
     if assigned_unit_ids:
         units = db.query(Unit).filter(Unit.id.in_(list(assigned_unit_ids))).all()
         for u in units:
-            assets = db.query(Asset).filter(
+            # Query all approved assets for this unit
+            exp_ver = db.query(AssetVersion).join(Asset).filter(
                 Asset.unit_id == u.id,
-                Asset.type.in_(["explanation", "example", "revision_sheet"])
-            ).all()
-            
-            for a in assets:
-                # ONLY fetch latest APPROVED version
-                approved_ver = db.query(AssetVersion).filter(
-                    AssetVersion.asset_id == a.id,
-                    AssetVersion.status == "approved"
-                ).order_by(AssetVersion.version_no.desc()).first()
-                
-                if approved_ver:
-                    obj = db.query(Objective).filter(Objective.id == a.objective_id).first() if a.objective_id else None
-                    materials.append({
-                        "asset_id": a.id,
-                        "version_id": approved_ver.id,
-                        "unit_title": u.title,
-                        "objective_text": obj.text if obj else "Unit Overview",
-                        "type": a.type,
-                        "version_no": approved_ver.version_no,
-                        "content": json.loads(approved_ver.content_json),
-                        "approved_at": approved_ver.approved_at
-                    })
+                Asset.type == "explanation",
+                AssetVersion.status == "approved"
+            ).order_by(AssetVersion.version_no.desc()).first()
+
+            ex_ver = db.query(AssetVersion).join(Asset).filter(
+                Asset.unit_id == u.id,
+                Asset.type == "example",
+                AssetVersion.status == "approved"
+            ).order_by(AssetVersion.version_no.desc()).first()
+
+            rev_ver = db.query(AssetVersion).join(Asset).filter(
+                Asset.unit_id == u.id,
+                Asset.type == "revision_sheet",
+                AssetVersion.status == "approved"
+            ).order_by(AssetVersion.version_no.desc()).first()
+
+            quiz_ver = db.query(AssetVersion).join(Asset).filter(
+                Asset.unit_id == u.id,
+                Asset.type == "quiz",
+                AssetVersion.status == "approved"
+            ).order_by(AssetVersion.version_no.desc()).first()
+
+            all_vers = [v for v in [exp_ver, ex_ver, rev_ver, quiz_ver] if v]
+            if not all_vers:
+                continue
+
+            exp_json = json.loads(exp_ver.content_json) if exp_ver else {}
+            ex_json = json.loads(ex_ver.content_json) if ex_ver else {}
+            rev_json = json.loads(rev_ver.content_json) if rev_ver else {}
+            quiz_json = json.loads(quiz_ver.content_json) if quiz_ver else {}
+
+            glossary_list = [{"id": g.id, "term": g.term, "canonical_wording": g.canonical_wording} for g in u.glossary_terms]
+            objectives_list = [{"id": o.id, "text": o.text} for o in u.objectives]
+
+            # Collect citations
+            all_citations = []
+            for j in [exp_json, ex_json, rev_json, quiz_json]:
+                if "chunk_citations" in j and isinstance(j["chunk_citations"], list):
+                    all_citations.extend(j["chunk_citations"])
+            all_citations = list(dict.fromkeys(all_citations))
+
+            # Build Full Consolidated Content
+            full_content = {
+                "title": f"Complete Study Pack: {u.title}",
+                "unit_title": u.title,
+                "topic": u.title,
+                "explanation": exp_json.get("explanation", ""),
+                "short_summary_points": exp_json.get("short_summary_points", []),
+                "key_points": exp_json.get("key_points", []),
+                "steps": ex_json.get("steps", []),
+                "problem_statement": ex_json.get("problem_statement", ""),
+                "method_explanation": ex_json.get("method_explanation", ""),
+                "key_takeaways": rev_json.get("key_takeaways", []),
+                "rapid_memory_triggers": rev_json.get("rapid_memory_triggers", rev_json.get("quick_recall_bullets", [])),
+                "questions": quiz_json.get("questions", []),
+                "glossary": glossary_list,
+                "chunk_citations": all_citations,
+                "explanation_pack": exp_json if exp_ver else None,
+                "example_pack": ex_json if ex_ver else None,
+                "revision_pack": rev_json if rev_ver else None,
+                "quiz_pack": quiz_json if quiz_ver else None,
+            }
+
+            max_ver_no = max([v.version_no for v in all_vers])
+            latest_approved_at = max([v.approved_at for v in all_vers if v.approved_at] or [datetime.utcnow()])
+
+            materials.append({
+                "unit_id": u.id,
+                "version_id": all_vers[0].id,
+                "unit_title": u.title,
+                "objective_text": u.objectives[0].text if u.objectives else "Complete Curriculum Pack",
+                "type": "full_pack",
+                "version_no": max_ver_no,
+                "approved_at": latest_approved_at,
+                "content": full_content,
+                "components": {
+                    "has_explanation": exp_ver is not None,
+                    "has_example": ex_ver is not None,
+                    "has_revision": rev_ver is not None,
+                    "has_quiz": quiz_ver is not None,
+                    "has_glossary": len(glossary_list) > 0
+                }
+            })
                     
     return materials
 
@@ -333,14 +395,63 @@ def download_material_pdf(version_id: int, db: Session = Depends(get_db), curren
     
     content = json.loads(ver.content_json)
     pdf_bytes = generate_learning_pack_pdf(
-        unit_title=unit.title if unit else "LessonFoundry Pack",
+        unit_title=unit.title if unit else "Retrievo Pack",
         asset_title=content.get("title", asset.type.capitalize()),
         content_json=content
     )
     
-    filename = f"LessonFoundry_{asset.type}_{ver.id}.pdf"
+    filename = f"Retrievo_{asset.type}_{ver.id}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.get("/units/{unit_id}/download-pdf")
+def download_unit_full_pack_pdf(unit_id: int, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+    unit = db.query(Unit).filter(Unit.id == unit_id).first()
+    if not unit:
+        raise HTTPException(status_code=404, detail="Unit not found.")
+
+    exp_ver = db.query(AssetVersion).join(Asset).filter(Asset.unit_id == unit.id, Asset.type == "explanation", AssetVersion.status == "approved").order_by(AssetVersion.version_no.desc()).first()
+    ex_ver = db.query(AssetVersion).join(Asset).filter(Asset.unit_id == unit.id, Asset.type == "example", AssetVersion.status == "approved").order_by(AssetVersion.version_no.desc()).first()
+    rev_ver = db.query(AssetVersion).join(Asset).filter(Asset.unit_id == unit.id, Asset.type == "revision_sheet", AssetVersion.status == "approved").order_by(AssetVersion.version_no.desc()).first()
+    quiz_ver = db.query(AssetVersion).join(Asset).filter(Asset.unit_id == unit.id, Asset.type == "quiz", AssetVersion.status == "approved").order_by(AssetVersion.version_no.desc()).first()
+
+    exp_json = json.loads(exp_ver.content_json) if exp_ver else {}
+    ex_json = json.loads(ex_ver.content_json) if ex_ver else {}
+    rev_json = json.loads(rev_ver.content_json) if rev_ver else {}
+    quiz_json = json.loads(quiz_ver.content_json) if quiz_ver else {}
+
+    glossary_list = [{"term": g.term, "canonical_wording": g.canonical_wording} for g in unit.glossary_terms]
+
+    all_citations = []
+    for j in [exp_json, ex_json, rev_json, quiz_json]:
+        if "chunk_citations" in j and isinstance(j["chunk_citations"], list):
+            all_citations.extend(j["chunk_citations"])
+    all_citations = list(dict.fromkeys(all_citations))
+
+    full_content = {
+        "title": f"Complete Study Pack: {unit.title}",
+        "explanation": exp_json.get("explanation", ""),
+        "steps": ex_json.get("steps", []),
+        "key_takeaways": rev_json.get("key_takeaways", []),
+        "rapid_memory_triggers": rev_json.get("rapid_memory_triggers", rev_json.get("quick_recall_bullets", [])),
+        "questions": quiz_json.get("questions", []),
+        "glossary": glossary_list,
+        "chunk_citations": all_citations
+    }
+
+    pdf_bytes = generate_learning_pack_pdf(
+        unit_title=unit.title,
+        asset_title=f"Full Study Pack",
+        content_json=full_content
+    )
+
+    clean_filename = f"Retrievo_Study_Pack_{unit.title.replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename={clean_filename}"}
+    )
+

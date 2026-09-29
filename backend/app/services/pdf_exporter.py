@@ -95,11 +95,31 @@ def generate_learning_pack_pdf(unit_title: str, asset_title: str, content_json: 
                 story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;<b>[{opt_key}]</b> {opt_val}", body_style))
             story.append(Spacer(1, 6))
             
-    # Key Takeaways for revision sheet
+    # Key Takeaways & Pitfalls for revision sheet
     if "key_takeaways" in content_json:
-        story.append(Paragraph("Key Takeaways & Invariants", heading2_style))
+        story.append(Paragraph("Core Invariants & Rules", heading2_style))
         for item in content_json["key_takeaways"]:
-            story.append(Paragraph(f"• <b>{item.get('objective')}</b>: {item.get('core_formula_rule')}", body_style))
+            obj_name = item.get('concept') or item.get('objective') or 'Rule'
+            story.append(Paragraph(f"• <b>{obj_name}</b>: {item.get('core_formula_rule', '')}", body_style))
+            if item.get("pitfall_to_avoid"):
+                story.append(Paragraph(f"&nbsp;&nbsp;&nbsp;&nbsp;<i>Pitfall to Avoid:</i> {item.get('pitfall_to_avoid')}", callout_style))
+        story.append(Spacer(1, 10))
+
+    # Rapid Recall Triggers
+    triggers = content_json.get("rapid_memory_triggers") or content_json.get("quick_recall_bullets")
+    if triggers:
+        story.append(Paragraph("Rapid Recall & Exam Triggers", heading2_style))
+        for trig in triggers:
+            story.append(Paragraph(f"▸ {trig}", body_style))
+        story.append(Spacer(1, 10))
+
+    # Domain Glossary
+    glossary = content_json.get("glossary") or content_json.get("glossary_terms")
+    if glossary:
+        story.append(Paragraph("Authoritative Domain Glossary", heading2_style))
+        for term_item in glossary:
+            if isinstance(term_item, dict):
+                story.append(Paragraph(f"<b>{term_item.get('term')}:</b> {term_item.get('canonical_wording')}", body_style))
         story.append(Spacer(1, 10))
         
     # Provenance Footer
