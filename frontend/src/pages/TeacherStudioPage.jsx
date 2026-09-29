@@ -1677,14 +1677,16 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 {editingContent ? 'View Formatted Cards' : 'Edit Raw JSON'}
                               </button>
 
-                              <button
-                                onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id)}
-                                disabled={generating}
-                                className="px-3 py-1.5 rounded-xl bg-neon-orange/20 hover:bg-neon-orange text-neon-glow hover:text-white border border-neon-orange/40 text-xs font-semibold flex items-center gap-1.5 transition-all"
-                              >
-                                <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
-                                Regenerate Item
-                              </button>
+                              {activeAssetTab === 'quiz' && (
+                                <button
+                                  onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id)}
+                                  disabled={generating}
+                                  className="px-3 py-1.5 rounded-xl bg-neon-orange/20 hover:bg-neon-orange text-neon-glow hover:text-white border border-neon-orange/40 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
+                                  Regenerate Item
+                                </button>
+                              )}
                             </div>
                           </div>
                         </GlassCard>
