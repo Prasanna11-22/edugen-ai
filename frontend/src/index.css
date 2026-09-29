@@ -1,0 +1,95 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-950 text-slate-100 antialiased selection:bg-neon-orange selection:text-white min-h-screen font-sans;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(255, 98, 0, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(255, 133, 0, 0.05) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(15, 18, 26, 0.7) 0px, transparent 100%);
+    background-attachment: fixed;
+  }
+}
+
+/* Glassmorphic Components */
+.glass-panel {
+  background: rgba(14, 17, 26, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 122, 0, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+}
+
+.glass-panel-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-panel-hover:hover {
+  border-color: rgba(255, 122, 0, 0.45);
+  box-shadow: 0 12px 40px 0 rgba(255, 98, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.glass-panel-accent {
+  background: linear-gradient(135deg, rgba(255, 98, 0, 0.08) 0%, rgba(18, 22, 34, 0.8) 100%);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 122, 0, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(255, 98, 0, 0.12);
+}
+
+.glass-input {
+  background: rgba(8, 10, 15, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f3f4f6;
+  transition: all 0.2s ease;
+}
+.glass-input:focus {
+  outline: none;
+  border-color: #ff6200;
+  box-shadow: 0 0 12px rgba(255, 98, 0, 0.3);
+}
+
+/* Neon Orange Buttons */
+.btn-royal {
+  @apply relative inline-flex items-center justify-center font-medium transition-all duration-300 rounded-xl px-5 py-2.5 overflow-hidden;
+  background: linear-gradient(135deg, #ff6200 0%, #ff8500 100%);
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 98, 0, 0.4);
+}
+.btn-royal:hover {
+  box-shadow: 0 0 30px rgba(255, 98, 0, 0.65);
+  transform: translateY(-1px);
+}
+.btn-royal:active {
+  transform: translateY(0);
+}
+
+.btn-royal-outline {
+  @apply relative inline-flex items-center justify-center font-medium transition-all duration-300 rounded-xl px-5 py-2.5;
+  background: rgba(255, 98, 0, 0.05);
+  border: 1px solid rgba(255, 98, 0, 0.4);
+  color: #ffa600;
+}
+.btn-royal-outline:hover {
+  background: rgba(255, 98, 0, 0.15);
+  border-color: #ff6200;
+  box-shadow: 0 0 18px rgba(255, 98, 0, 0.3);
+}
+
+/* Custom glowing scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #07080c;
+}
+::-webkit-scrollbar-thumb {
+  background: #252b3d;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 122, 0, 0.15);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ff6200;
+}
