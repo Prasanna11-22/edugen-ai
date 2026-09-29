@@ -11,10 +11,13 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 CANDIDATE_MODELS = [
+    "gemini-3-flash-preview",
     "gemini-flash-lite-latest",
-    "gemini-3.6-flash",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
-    "gemini-2.5-flash"
+    "gemini-flash-latest"
 ]
 
 def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, timeout: int = 25) -> Optional[Dict[str, Any]]:
@@ -61,24 +64,28 @@ def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, time
                         parsed = json.loads(raw_text)
                         return parsed
             else:
-                # If 503 or 404, try next candidate model
+                # If 503, 404, or 429, try next candidate model
                 continue
-        except Exception as e:
+        except Exception:
             continue
             
     return None
 
 VISION_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-3.6-flash",
-    "gemini-flash-lite-latest"
+    "gemini-3-flash-preview",
+    "gemini-flash-lite-latest",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-latest"
 ]
 
 def call_gemini_vision(
     image_bytes: bytes,
     mime_type: str = "image/png",
     prompt: Optional[str] = None,
-    timeout: int = 15
+    timeout: int = 25
 ) -> Optional[str]:
     """
     Calls multimodal vision Gemini model to perform high-fidelity OCR transcription.
@@ -89,10 +96,12 @@ def call_gemini_vision(
         return None
 
     ocr_prompt = prompt or (
-        "You are an expert Optical Character Recognition (OCR) engine.\n"
-        "Transcribe all text from the provided document image accurately, completely, and verbatim.\n"
-        "CRITICAL INSTRUCTION: If any word, number, or symbol is illegible, blurry, or uncertain, wrap it in [UNCERTAIN: best guess] tags.\n"
-        "Output ONLY the transcribed text."
+        "You are an expert Optical Character Recognition (OCR) and handwriting transcription engine.\n"
+        "Transcribe all text from the provided document/notes image verbatim, accurately, and completely.\n"
+        "Instructions:\n"
+        "1. Decipher all handwriting, cursive, printed text, numbers, lists, bullet points, headers, and formulas.\n"
+        "2. If any word or symbol is genuinely illegible or ambiguous, wrap it in [UNCERTAIN: best guess] tags.\n"
+        "3. Output ONLY the transcribed text without conversational commentary."
     )
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")

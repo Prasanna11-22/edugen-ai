@@ -4,6 +4,7 @@ import os
 import base64
 from typing import Dict, Any, List, Optional
 from .gemini_service import call_gemini_vision
+from .pdf_parser import optimize_image_for_ocr
 
 OCR_SYSTEM_PROMPT = """You are an advanced Optical Character Recognition (OCR) and handwriting transcription AI specialized in deciphering handwritten notes, student notebook pages, whiteboard captures, classroom lecture notes, mathematical derivations, scientific diagrams, and scanned documents.
 
@@ -88,9 +89,11 @@ def perform_llm_ocr(
     if not image_bytes:
         return parse_ocr_transcription("")
 
+    opt_bytes, opt_mime = optimize_image_for_ocr(image_bytes)
+
     raw_response = call_gemini_vision(
-        image_bytes=image_bytes,
-        mime_type=mime_type,
+        image_bytes=opt_bytes,
+        mime_type=opt_mime,
         prompt=OCR_SYSTEM_PROMPT
     )
 
