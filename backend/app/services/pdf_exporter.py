@@ -66,7 +66,7 @@ def generate_learning_pack_pdf(unit_title: str, asset_title: str, content_json: 
     story = []
     
     # Header
-    story.append(Paragraph(f"LessonFoundry Studio — {unit_title}", title_style))
+    story.append(Paragraph(f"Retrievo — {unit_title}", title_style))
     story.append(Paragraph(f"Approved Study Material: <b>{asset_title}</b> | RAG-Grounded & Objective-Aligned", subtitle_style))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#ff6b00"), spaceAfter=15))
     

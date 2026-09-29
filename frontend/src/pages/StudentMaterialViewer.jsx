@@ -7,24 +7,29 @@ import {
   ShieldCheck, 
   FileText, 
   CheckCircle2, 
-  Layers,
-  Sparkles,
-  FileCheck,
-  HelpCircle,
-  Library,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  EyeOff
+  Layers, 
+  Sparkles, 
+  FileCheck, 
+  HelpCircle, 
+  Library, 
+  AlertTriangle, 
+  ChevronDown, 
+  ChevronUp, 
+  Eye, 
+  EyeOff,
+  RotateCcw,
+  Target,
+  Check,
+  X
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
 
 const StudentMaterialViewer = ({ material, onBack }) => {
   const { token } = useAuth();
-  const [activeTab, setActiveTab] = useState('all'); // all, explanation, examples, revision, practice, glossary
+  const [activeTab, setActiveTab] = useState(material?.initialTab || 'all'); // all, explanation, examples, revision, practice, glossary
   const [revealedAnswers, setRevealedAnswers] = useState({});
+  const [selectedAnswers, setSelectedAnswers] = useState({}); // { [qIdx]: 'A' }
 
   const content = material?.content || {};
   const explanation = content.explanation || '';
@@ -48,12 +53,42 @@ const StudentMaterialViewer = ({ material, onBack }) => {
     setRevealedAnswers(prev => ({ ...prev, [idx]: !prev[idx] }));
   };
 
+  const handleSelectOption = (qIdx, optKey) => {
+    setSelectedAnswers(prev => ({ ...prev, [qIdx]: optKey }));
+  };
+
+  const revealAllAnswers = () => {
+    const all = {};
+    questions.forEach((_, idx) => { all[idx] = true; });
+    setRevealedAnswers(all);
+  };
+
+  const hideAllAnswers = () => {
+    setRevealedAnswers({});
+  };
+
+  const resetPractice = () => {
+    setSelectedAnswers({});
+    setRevealedAnswers({});
+  };
+
+  // Calculate practice stats
+  const answeredCount = Object.keys(selectedAnswers).length;
+  let correctCount = 0;
+  questions.forEach((q, idx) => {
+    const sel = selectedAnswers[idx];
+    const correct = q.correct_answer || q.correct_option;
+    if (sel && sel === correct) {
+      correctCount += 1;
+    }
+  });
+
   const tabs = [
     { id: 'all', label: 'All-in-One Pack', icon: Layers },
     ...(explanation ? [{ id: 'explanation', label: 'Concept Explanation', icon: FileText }] : []),
     ...(steps.length > 0 ? [{ id: 'examples', label: 'Worked Steps', icon: Sparkles }] : []),
     ...(keyTakeaways.length > 0 || memoryTriggers.length > 0 ? [{ id: 'revision', label: 'Revision & Rules', icon: FileCheck }] : []),
-    ...(questions.length > 0 ? [{ id: 'practice', label: `Practice Qs (${questions.length})`, icon: HelpCircle }] : []),
+    ...(questions.length > 0 ? [{ id: 'practice', label: `Practice Questions (${questions.length})`, icon: HelpCircle }] : []),
     ...(glossary.length > 0 ? [{ id: 'glossary', label: `Glossary (${glossary.length})`, icon: Library }] : []),
   ];
 
@@ -70,12 +105,12 @@ const StudentMaterialViewer = ({ material, onBack }) => {
         </button>
 
         <div className="flex items-center gap-3">
-          <Badge variant="approved">VERIFIED FULL PACK</Badge>
+          <Badge variant="approved">VERIFIED STUDY PACK</Badge>
           <button
             onClick={handleDownloadPDF}
             className="btn-royal text-xs flex items-center gap-1.5 py-2 px-4 shadow-neon"
           >
-            <Download className="w-3.5 h-3.5" /> Download Full Pack PDF
+            <Download className="w-3.5 h-3.5" /> Download Pack PDF
           </button>
         </div>
       </div>
@@ -86,16 +121,16 @@ const StudentMaterialViewer = ({ material, onBack }) => {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <span className="text-xs font-mono font-bold uppercase tracking-widest text-neon-amber block mb-1">
-              {material.unit_title} · Complete Study Material
+              {material.subject || 'Domain'} · {material.unit_title}
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-white">
               {content.title || `Complete Study Pack: ${material.unit_title}`}
             </h2>
             <p className="text-xs text-slate-300 mt-1">
-              Authoritative multi-asset curriculum pack approved for classroom study and examination prep.
+              Authoritative multi-asset curriculum pack approved for self-paced study and classroom mastery.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <span className="px-3 py-1.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-neon-orange font-bold">
               Version {material.version_no || 1}
             </span>
@@ -280,90 +315,182 @@ const StudentMaterialViewer = ({ material, onBack }) => {
       )}
 
       {/* ========================================================================= */}
-      {/* SECTION 4: PRACTICE & FORMATIVE QUESTIONS */}
+      {/* SECTION 4: SEPARATE PRACTICE QUESTIONS (INTERACTIVE SELF-PACED MODE) */}
       {/* ========================================================================= */}
       {(activeTab === 'all' || activeTab === 'practice') && questions.length > 0 && (
         <GlassCard
           icon={HelpCircle}
-          title={`Practice Questions (${questions.length} Questions)`}
-          subtitle="Formative assessment set with distractor rationales and step solutions"
+          title={`Self-Paced Practice Questions (${questions.length} Questions)`}
+          subtitle="Formative assessment set with interactive option testing and step rationales"
           accent={true}
         >
-          <div className="space-y-4">
-            {questions.map((q, qIdx) => {
-              const isRevealed = revealedAnswers[qIdx];
-              return (
-                <div key={qIdx} className="p-4 sm:p-5 rounded-2xl bg-dark-950 border border-slate-800 space-y-3.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-2.5">
-                      <span className="w-6 h-6 rounded-lg bg-dark-900 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs text-neon-orange shrink-0">
-                        {qIdx + 1}
-                      </span>
-                      <h4 className="font-semibold text-xs sm:text-sm text-white leading-relaxed">
-                        {q.question}
-                      </h4>
-                    </div>
-                    {q.cognitive_tier && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-slate-300 shrink-0">
-                        {q.cognitive_tier}
-                      </span>
-                    )}
+          <div className="space-y-6">
+            
+            {/* Practice Mode Control Bar */}
+            <div className="p-4 rounded-2xl bg-dark-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                  <Target className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-2">
+                    <span>Self-Study Practice Session</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+                      Untimed
+                    </span>
                   </div>
-
-                  {/* Options List */}
-                  {q.options && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-8">
-                      {Object.entries(q.options).map(([optKey, optVal]) => {
-                        const isCorrect = isRevealed && (q.correct_answer === optKey || q.correct_option === optKey);
-                        return (
-                          <div
-                            key={optKey}
-                            className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 transition-all ${
-                              isCorrect
-                                ? 'bg-emerald-950/40 border-emerald-500/60 text-emerald-200 font-semibold'
-                                : 'bg-dark-900 border-slate-800 text-slate-300'
-                            }`}
-                          >
-                            <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-mono font-bold ${
-                              isCorrect ? 'bg-emerald-500 text-black' : 'bg-dark-800 text-slate-400'
-                            }`}>
-                              {optKey}
-                            </span>
-                            <span>{optVal}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Reveal Solution Toggle */}
-                  <div className="pl-8 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleAnswer(qIdx)}
-                      className="px-3 py-1.5 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-400 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1.5 transition"
-                    >
-                      {isRevealed ? <EyeOff className="w-3.5 h-3.5 text-neon-orange" /> : <Eye className="w-3.5 h-3.5 text-neon-orange" />}
-                      <span>{isRevealed ? 'Hide Solution' : 'View Correct Answer & Rationale'}</span>
-                    </button>
-
-                    {isRevealed && (
-                      <div className="mt-3 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-slate-300 space-y-1.5 animate-in fade-in">
-                        <div className="flex items-center gap-2 font-bold text-emerald-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Correct Answer: Option [{q.correct_answer || q.correct_option}]</span>
-                        </div>
-                        {q.explanation && (
-                          <p className="text-slate-300 text-[11px] leading-relaxed pl-5 font-sans">
-                            {q.explanation}
-                          </p>
-                        )}
-                      </div>
+                  <div className="text-[11px] text-slate-400 font-mono">
+                    Attempted: <strong className="text-sky-300">{answeredCount}/{questions.length}</strong>
+                    {answeredCount > 0 && (
+                      <span className="ml-2">
+                        · Correct: <strong className="text-emerald-400">{correctCount}/{answeredCount}</strong>
+                      </span>
                     )}
                   </div>
                 </div>
-              );
-            })}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <button
+                  type="button"
+                  onClick={revealAllAnswers}
+                  className="px-3 py-1.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Eye className="w-3.5 h-3.5 text-neon-orange" /> Reveal All
+                </button>
+                <button
+                  type="button"
+                  onClick={hideAllAnswers}
+                  className="px-3 py-1.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <EyeOff className="w-3.5 h-3.5 text-slate-400" /> Hide All
+                </button>
+                <button
+                  type="button"
+                  onClick={resetPractice}
+                  className="px-3 py-1.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" /> Reset
+                </button>
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-4">
+              {questions.map((q, qIdx) => {
+                const isRevealed = revealedAnswers[qIdx];
+                const selectedOpt = selectedAnswers[qIdx];
+                const trueAnswer = q.correct_answer || q.correct_option;
+
+                return (
+                  <div key={qIdx} className="p-4 sm:p-5 rounded-2xl bg-dark-950 border border-slate-800 space-y-4 hover:border-slate-700 transition-all">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <span className="w-6 h-6 rounded-lg bg-dark-900 border border-slate-700 flex items-center justify-center font-mono font-bold text-xs text-sky-400 shrink-0">
+                          {qIdx + 1}
+                        </span>
+                        <h4 className="font-semibold text-xs sm:text-sm text-white leading-relaxed">
+                          {q.question}
+                        </h4>
+                      </div>
+                      {q.cognitive_tier && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-slate-300 shrink-0">
+                          {q.cognitive_tier}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Interactive Options List */}
+                    {q.options && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pl-8">
+                        {Object.entries(q.options).map(([optKey, optVal]) => {
+                          const isSelected = selectedOpt === optKey;
+                          const isCorrectOpt = trueAnswer === optKey;
+                          
+                          let cardClasses = 'bg-dark-900 border-slate-800 text-slate-300 hover:border-slate-700';
+                          let badgeClasses = 'bg-dark-800 text-slate-400';
+
+                          if (isRevealed) {
+                            if (isCorrectOpt) {
+                              cardClasses = 'bg-emerald-950/40 border-emerald-500/60 text-emerald-200 font-semibold shadow-sm';
+                              badgeClasses = 'bg-emerald-500 text-black font-bold';
+                            } else if (isSelected && !isCorrectOpt) {
+                              cardClasses = 'bg-rose-950/30 border-rose-500/50 text-rose-300 font-medium';
+                              badgeClasses = 'bg-rose-500 text-white font-bold';
+                            }
+                          } else if (isSelected) {
+                            cardClasses = 'bg-sky-950/40 border-sky-500/60 text-sky-200 font-semibold shadow-sm';
+                            badgeClasses = 'bg-sky-500 text-black font-bold';
+                          }
+
+                          return (
+                            <button
+                              key={optKey}
+                              type="button"
+                              onClick={() => handleSelectOption(qIdx, optKey)}
+                              className={`p-3 rounded-xl border text-xs flex items-center justify-between text-left transition-all ${cardClasses}`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-mono shrink-0 ${badgeClasses}`}>
+                                  {optKey}
+                                </span>
+                                <span>{optVal}</span>
+                              </div>
+
+                              {isRevealed && isCorrectOpt && (
+                                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                              )}
+                              {isRevealed && isSelected && !isCorrectOpt && (
+                                <X className="w-4 h-4 text-rose-400 shrink-0" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Reveal Solution Toggle & Explanations */}
+                    <div className="pl-8 pt-1">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleAnswer(qIdx)}
+                          className="px-3 py-1.5 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-400 hover:text-white border border-slate-800 text-[11px] font-medium flex items-center gap-1.5 transition"
+                        >
+                          {isRevealed ? <EyeOff className="w-3.5 h-3.5 text-neon-orange" /> : <Eye className="w-3.5 h-3.5 text-neon-orange" />}
+                          <span>{isRevealed ? 'Hide Solution' : 'Check Solution & Rationale'}</span>
+                        </button>
+
+                        {selectedOpt && !isRevealed && (
+                          <span className="text-[11px] font-mono text-slate-400">
+                            Your Choice: <strong className="text-sky-400 font-bold">[{selectedOpt}]</strong> (Unverified)
+                          </span>
+                        )}
+                      </div>
+
+                      {isRevealed && (
+                        <div className="mt-3 p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-slate-300 space-y-1.5 animate-in fade-in">
+                          <div className="flex items-center gap-2 font-bold text-emerald-400">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Correct Answer: Option [{trueAnswer}]</span>
+                            {selectedOpt && (
+                              <span className={`text-[11px] font-mono px-2 py-0.5 rounded ${selectedOpt === trueAnswer ? 'bg-emerald-900/60 text-emerald-300' : 'bg-rose-900/60 text-rose-300'}`}>
+                                {selectedOpt === trueAnswer ? '✓ Your Answer Was Correct' : `✗ You Selected [${selectedOpt}]`}
+                              </span>
+                            )}
+                          </div>
+                          {q.explanation && (
+                            <p className="text-slate-300 text-[11px] leading-relaxed pl-5 font-sans">
+                              {q.explanation}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </GlassCard>
       )}

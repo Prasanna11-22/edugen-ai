@@ -84,7 +84,7 @@ const AppContent = () => {
           return (
             <StudentDashboard
               onTakeAssessment={(a) => { setActiveAssessment(a); setActiveTab('student_assessment'); }}
-              onViewMaterial={(m) => { setActiveMaterial(m); setActiveTab('student_material'); }}
+              onViewMaterial={(m, initialTab = 'all') => { setActiveMaterial({ ...m, initialTab }); setActiveTab('student_material'); }}
             />
           );
         }
@@ -111,7 +111,7 @@ const AppContent = () => {
         return (
           <StudentDashboard
             onTakeAssessment={(a) => { setActiveAssessment(a); setActiveTab('student_assessment'); }}
-            onViewMaterial={(m) => { setActiveMaterial(m); setActiveTab('student_material'); }}
+            onViewMaterial={(m, initialTab = 'all') => { setActiveMaterial({ ...m, initialTab }); setActiveTab('student_material'); }}
           />
         );
 
@@ -124,7 +124,7 @@ const AppContent = () => {
         ) : (
           <StudentDashboard
             onTakeAssessment={(a) => { setActiveAssessment(a); setActiveTab('student_assessment'); }}
-            onViewMaterial={(m) => { setActiveMaterial(m); setActiveTab('student_material'); }}
+            onViewMaterial={(m, initialTab = 'all') => { setActiveMaterial({ ...m, initialTab }); setActiveTab('student_material'); }}
           />
         );
 
@@ -137,7 +137,7 @@ const AppContent = () => {
         ) : (
           <StudentDashboard
             onTakeAssessment={(a) => { setActiveAssessment(a); setActiveTab('student_assessment'); }}
-            onViewMaterial={(m) => { setActiveMaterial(m); setActiveTab('student_material'); }}
+            onViewMaterial={(m, initialTab = 'all') => { setActiveMaterial({ ...m, initialTab }); setActiveTab('student_material'); }}
           />
         );
 
