@@ -41,13 +41,17 @@ def approve_or_reject_teacher(action: TeacherApprovalAction, db: Session = Depen
         
     if action.approved:
         teacher.is_approved = True
+        teacher_id = teacher.id
+        db.commit()
         msg = f"Teacher '{teacher.name}' has been APPROVED and can now log in."
+        return {"message": msg, "teacher_id": teacher_id, "is_approved": True}
     else:
-        teacher.is_approved = False
-        msg = f"Teacher '{teacher.name}' signup request rejected. Note: {action.reason or 'Not specified'}."
-        
-    db.commit()
-    return {"message": msg, "teacher_id": teacher.id, "is_approved": teacher.is_approved}
+        teacher_name = teacher.name
+        teacher_id = teacher.id
+        db.delete(teacher)
+        db.commit()
+        msg = f"Teacher registration for '{teacher_name}' has been REJECTED and removed from the system."
+        return {"message": msg, "teacher_id": teacher_id, "is_approved": False, "deleted": True}
 
 @router.get("/stats")
 def get_system_stats(db: Session = Depends(get_db), current_admin: User = Depends(admin_required)):

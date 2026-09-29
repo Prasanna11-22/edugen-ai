@@ -85,10 +85,13 @@ const AdminDashboard = ({ onNavigate }) => {
         })
       });
       if (res.ok) {
+        showToast(`Teacher registration for "${rejectModalTeacher.name}" was rejected.`, "info");
         setRejectModalTeacher(null);
         setRejectReason('');
-        showToast("Teacher account rejected.", "info");
-        fetchAdminData();
+        await fetchAdminData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        showToast(errData.detail || "Failed to reject teacher registration.", "error");
       }
     } catch (err) {
       showToast(err.message, "error");
@@ -302,9 +305,17 @@ const AdminDashboard = ({ onNavigate }) => {
               </button>
               <button
                 onClick={handleRejectConfirm}
-                className="px-4 py-2 rounded-xl text-xs bg-rose-600 hover:bg-rose-500 text-white font-semibold"
+                disabled={actionLoading !== null}
+                className="px-4 py-2 rounded-xl text-xs bg-rose-600 hover:bg-rose-500 text-white font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
               >
-                Confirm Rejection
+                {actionLoading === rejectModalTeacher.id ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Rejecting...</span>
+                  </>
+                ) : (
+                  <span>Confirm Rejection</span>
+                )}
               </button>
             </div>
           </div>
