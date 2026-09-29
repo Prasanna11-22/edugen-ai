@@ -13,6 +13,18 @@ class TeacherSignup(BaseModel):
     password: str
     institution: Optional[str] = None
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class VerifyOTPRequest(BaseModel):
+    email: str
+    otp: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str
+    new_password: str
+
 class StudentCreate(BaseModel):
     name: str
     email: str
