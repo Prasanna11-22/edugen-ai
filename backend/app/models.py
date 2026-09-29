@@ -142,6 +142,7 @@ class Asset(Base):
     unit = relationship("Unit", back_populates="assets")
     objective = relationship("Objective", back_populates="assets")
     versions = relationship("AssetVersion", back_populates="asset", cascade="all, delete-orphan")
+    quiz_items = relationship("QuizItem", back_populates="asset", cascade="all, delete-orphan", order_by="QuizItem.item_index")
 
 
 class AssetVersion(Base):
@@ -221,3 +222,84 @@ class PasswordResetOTP(Base):
     expires_at = Column(DateTime, nullable=False)
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class QuizItem(Base):
+    __tablename__ = "quiz_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    asset_id = Column(Integer, ForeignKey("assets.id"), nullable=False)
+    item_index = Column(Integer, default=0)
+    question_text = Column(Text, nullable=False)
+    options_json = Column(Text, nullable=False) # JSON dict {"A": "...", "B": "..."}
+    correct_option_id = Column(String(10), nullable=False) # "A", "B", etc.
+    correct_answer_text = Column(Text, nullable=True)
+    rationale = Column(Text, nullable=True)
+    difficulty_tier = Column(String(50), nullable=True) # Easy, Medium, Advanced
+    bloom_level = Column(String(50), nullable=True)
+    source_citation = Column(String(200), nullable=True)
+    status = Column(String(30), default="draft") # draft, approved, needs_revision
+    current_version_no = Column(Integer, default=1)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    approved_at = Column(DateTime, nullable=True)
+    
+    asset = relationship("Asset", back_populates="quiz_items")
+    versions = relationship("QuizItemVersion", back_populates="quiz_item", cascade="all, delete-orphan", order_by="desc(QuizItemVersion.version_no)")
+
+
+class QuizItemVersion(Base):
+    __tablename__ = "quiz_item_versions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    quiz_item_id = Column(Integer, ForeignKey("quiz_items.id"), nullable=False)
+    version_no = Column(Integer, nullable=False)
+    question_text = Column(Text, nullable=False)
+    options_json = Column(Text, nullable=False)
+    correct_option_id = Column(String(10), nullable=False)
+    correct_answer_text = Column(Text, nullable=True)
+    rationale = Column(Text, nullable=True)
+    difficulty_tier = Column(String(50), nullable=True)
+    bloom_level = Column(String(50), nullable=True)
+    source_citation = Column(String(200), nullable=True)
+    status = Column(String(30), default="draft")
+    regen_reason = Column(Text, nullable=True) # comments / notes
+    regen_reason_category = Column(String(100), nullable=True) # Duplicate, Too easy/hard, Ambiguous wording, Factually incorrect, Answer leakage, Other
+    triggered_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    quiz_item = relationship("QuizItem", back_populates="versions")
+    teacher = relationship("User")
+
+
+class StudentRequest(Base):
+    __tablename__ = "student_requests"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
+    objective_id = Column(Integer, ForeignKey("objectives.id"), nullable=True)
+    unit_id = Column(Integer, ForeignKey("units.id"), nullable=True)
+    question_text = Column(Text, nullable=False)
+    details = Column(Text, nullable=True)
+    status = Column(String(30), default="open", nullable=False) # open, in_progress, resolved, closed
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    student = relationship("User", foreign_keys=[student_id])
+    classroom = relationship("Classroom")
+    objective = relationship("Objective")
+    unit = relationship("Unit")
+    responses = relationship("RequestResponse", back_populates="request", cascade="all, delete-orphan", order_by="RequestResponse.created_at.asc()")
+
+
+class RequestResponse(Base):
+    __tablename__ = "request_responses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("student_requests.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    request = relationship("StudentRequest", back_populates="responses")
+    user = relationship("User")
+
+

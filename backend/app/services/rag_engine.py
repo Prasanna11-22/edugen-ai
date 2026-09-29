@@ -1,5 +1,6 @@
 import json
 import re
+import random
 from typing import List, Dict, Any, Tuple, Optional
 from .embeddings import retrieve_top_k_chunks
 from .guardrails import run_all_guardrails
@@ -455,7 +456,7 @@ def generate_formative_quiz(
     """
     citations = [f"Chunk #{c.get('chunk_index', idx+1)}" for idx, c in enumerate(chunks)]
     chunk_ids = [c.get("id") for c in chunks if "id" in c]
-    total_q = max(1, min(10, int(num_questions or 3)))
+    total_q = max(1, min(20, int(num_questions or 5)))
     
     # Determine difficulty distribution tier
     diff_input = (difficulty_mode or "").strip().lower()
@@ -496,7 +497,7 @@ Instruction for Difficulty Distribution:
 Requirements:
 - Each question must test understanding of "{objective_text}" using ONLY the source facts above.
 - 4 clear options labeled A, B, C, D.
-- exactly ONE correct_option_id which MUST be "A", "B", "C", or "D".
+- Vary the correct option across A, B, C, and D (do not always place the correct answer as option A).
 - Pedagogical rationale explaining why the correct answer is right based on the text.
 - difficulty_tier: strictly one of "Easy", "Medium", or "Advanced".
 - Bloom's level (e.g. "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create").
@@ -508,13 +509,13 @@ Return JSON in this format:
     {{
       "stem": "Clear question testing objective?",
       "options": {{
-        "A": "Option A text",
-        "B": "Option B text",
-        "C": "Option C text",
-        "D": "Option D text"
+        "A": "First Option text",
+        "B": "Second Option text",
+        "C": "Third Option text",
+        "D": "Fourth Option text"
       }},
-      "correct_option_id": "A",
-      "rationale": "Why option A is verified by the source text",
+      "correct_option_id": "B",
+      "rationale": "Why option B is verified by the source text",
       "difficulty_tier": "Easy",
       "bloom_level": "Understand",
       "citation": "Chunk #1"
@@ -529,13 +530,28 @@ Return JSON in this format:
         for i, q in enumerate(llm_res["questions"][:total_q]):
             qid = f"q{i+1}"
             stem = q.get("stem") or q.get("question") or q.get("question_text") or f"Question {i+1} on {objective_text}"
-            opts = q.get("options", {})
-            if not isinstance(opts, dict) or len(opts) < 4:
-                opts = {"A": "First Choice", "B": "Second Choice", "C": "Third Choice", "D": "Fourth Choice"}
-            corr = str(q.get("correct_option_id", "A")).upper().strip()
-            if corr not in opts:
-                corr = list(opts.keys())[0]
-            corr_text = opts.get(corr, "")
+            raw_opts = q.get("options", {})
+            if not isinstance(raw_opts, dict) or len(raw_opts) < 4:
+                raw_opts = {"A": "First Choice", "B": "Second Choice", "C": "Third Choice", "D": "Fourth Choice"}
+            
+            raw_corr = str(q.get("correct_option_id", "A")).upper().strip()
+            if raw_corr not in raw_opts:
+                raw_corr = list(raw_opts.keys())[0]
+            corr_text = str(raw_opts.get(raw_corr, "")).strip()
+
+            # Randomize/shuffle options so correct answer is not biased towards option A
+            opt_texts = [str(v).strip() for v in raw_opts.values()]
+            random.shuffle(opt_texts)
+            std_keys = ["A", "B", "C", "D"][:len(opt_texts)]
+            shuffled_opts = {k: v for k, v in zip(std_keys, opt_texts)}
+            
+            try:
+                new_corr_idx = opt_texts.index(corr_text)
+                corr = std_keys[new_corr_idx]
+            except ValueError:
+                corr = "A"
+                shuffled_opts["A"] = corr_text
+
             rat = q.get("rationale") or q.get("explanation") or f"Grounded factual claim verified in source for {objective_text}"
             cit = q.get("citation") or (citations[0] if citations else "Chunk #1")
             diff_tier = q.get("difficulty_tier") or ("Advanced" if i >= (2*total_q)//3 and "hard" in selected_difficulty.lower() else ("Medium" if i >= total_q//2 and "easy" not in selected_difficulty.lower() else "Easy"))
@@ -544,7 +560,7 @@ Return JSON in this format:
                 "id": qid,
                 "question": stem,
                 "question_text": stem,
-                "options": opts,
+                "options": shuffled_opts,
                 "correct_option_id": corr,
                 "correct_option": corr,
                 "correct_answer": corr_text,
@@ -878,6 +894,180 @@ Return JSON in this format:
         "chunk_citations": citations,
         "chunk_ids": chunk_ids,
         "_answer_keys_data": answer_keys_data
+    }
+
+def regenerate_single_quiz_item(
+    previous_question: str,
+    previous_options: Dict[str, str],
+    previous_correct: str,
+    objective_text: str,
+    chunks: List[Dict[str, Any]],
+    glossary: List[Dict[str, str]],
+    bloom_level: str = "Understand",
+    difficulty_mode: str = "Medium",
+    regen_reason_category: str = "Other",
+    regen_reason_comment: str = "",
+    other_existing_questions: List[str] = None
+) -> Dict[str, Any]:
+    """
+    Selectively regenerates a SINGLE quiz question item.
+    Injects the teacher's reason category and comments into the prompt,
+    ensuring the new item avoids the previous defect and doesn't duplicate other existing questions.
+    """
+    citations = [f"Chunk #{c.get('chunk_index', idx+1)}" for idx, c in enumerate(chunks)]
+    chunk_ids = [c.get("id") for c in chunks if "id" in c]
+    
+    other_q_str = "\n".join([f"- {q}" for q in (other_existing_questions or []) if q])
+    if not other_q_str:
+        other_q_str = "(None)"
+        
+    reason_desc = f"{regen_reason_category}"
+    if regen_reason_comment and regen_reason_comment.strip():
+        reason_desc += f": {regen_reason_comment.strip()}"
+        
+    chunks_context = "\n\n".join([f"<chunk id='Chunk #{c.get('chunk_index', idx+1)}'>\n{clean_chunk_text(c.get('text', ''))}\n</chunk>" for idx, c in enumerate(chunks)])
+    
+    llm_prompt = f"""You are a professional educational assessment item revision expert.
+Source Document Chunks:
+{chunks_context}
+
+Target Learning Objective: "{objective_text}"
+Target Bloom's Level: "{bloom_level}"
+Target Difficulty Level: "{difficulty_mode}"
+
+Context on item being revised:
+- Previous Question: "{previous_question}"
+- Flagged Defect / Reason for Replacement: "{reason_desc}"
+
+CRITICAL INSTRUCTIONS:
+1. Generate a single replacement question for the same objective ("{objective_text}") and difficulty level ("{difficulty_mode}") that completely fixes and avoids the flagged issue ("{reason_desc}").
+2. The new question MUST NOT duplicate, clone, or closely resemble any of these other existing questions already in the assessment:
+{other_q_str}
+3. The question must test understanding using ONLY the facts in the source chunks above.
+4. Exactly 4 options labeled A, B, C, D.
+5. Exactly ONE correct_option_id which MUST be "A", "B", "C", or "D".
+6. Comprehensive pedagogical rationale explaining why the correct answer is right based strictly on the text.
+7. difficulty_tier: strictly one of "Easy", "Medium", or "Advanced".
+8. Bloom's level (e.g. "Remember", "Understand", "Apply", "Analyze", "Evaluate", "Create").
+9. Citation mentioning the source chunk (e.g. "Chunk #1").
+
+Return JSON in this format:
+{{
+  "stem": "Clear replacement question testing objective?",
+  "options": {{
+    "A": "Option A text",
+    "B": "Option B text",
+    "C": "Option C text",
+    "D": "Option D text"
+  }},
+  "correct_option_id": "A",
+  "rationale": "Pedagogical rationale explaining why option A is verified by the source text",
+  "difficulty_tier": "{difficulty_mode}",
+  "bloom_level": "{bloom_level}",
+  "citation": "{citations[0] if citations else 'Chunk #1'}"
+}}"""
+
+    llm_res = call_gemini_json(llm_prompt)
+    if llm_res and isinstance(llm_res, dict):
+        stem = llm_res.get("stem") or llm_res.get("question") or llm_res.get("question_text")
+        opts = llm_res.get("options", {})
+        if stem and isinstance(opts, dict) and len(opts) >= 4:
+            corr = str(llm_res.get("correct_option_id", "A")).upper().strip()
+            if corr not in opts:
+                corr = list(opts.keys())[0]
+            corr_text = opts.get(corr, "")
+            rat = llm_res.get("rationale") or llm_res.get("explanation") or f"Verified in source for {objective_text}"
+            cit = llm_res.get("citation") or (citations[0] if citations else "Chunk #1")
+            diff_tier = llm_res.get("difficulty_tier") or difficulty_mode
+            bloom = llm_res.get("bloom_level") or bloom_level
+            
+            return {
+                "question": stem,
+                "question_text": stem,
+                "options": opts,
+                "correct_option_id": corr,
+                "correct_option": corr,
+                "correct_answer": corr_text,
+                "correct_answer_text": corr_text,
+                "rationale": rat,
+                "difficulty_tier": diff_tier,
+                "bloom_level": bloom,
+                "source_citation": cit,
+                "chunk_citations": citations,
+                "chunk_ids": chunk_ids
+            }
+
+    # Intelligent Fallback generation
+    fallback_pool = [
+        {
+            "stem": f"Which core principle is fundamental to {objective_text} according to the verified syllabus?",
+            "correct": f"The standardized interface mechanism establishing deterministic resource management.",
+            "distractors": [
+                "The complete elimination of hardware privilege layers.",
+                "Unrestricted direct physical memory bus access from user mode.",
+                "Mandatory compile-time hardware virtualization for all processes."
+            ],
+            "rationale": f"Verified directly against source specifications for {objective_text}.",
+            "difficulty": difficulty_mode,
+            "bloom": bloom_level
+        },
+        {
+            "stem": f"In analyzing {objective_text}, what distinction is critical to maintain system stability?",
+            "correct": "The boundary separation between mechanism execution and policy specification.",
+            "distractors": [
+                "Merging user application address spaces into kernel space.",
+                "Bypassing hardware interrupts during synchronous I/O.",
+                "Executing arithmetic operations without register allocation."
+            ],
+            "rationale": f"Mechanism-policy separation guarantees structural integrity across {objective_text}.",
+            "difficulty": difficulty_mode,
+            "bloom": bloom_level
+        },
+        {
+            "stem": f"How does the system ensure robust error handling and fault isolation for {objective_text}?",
+            "correct": "Through privileged mode switching and protected virtual memory mappings.",
+            "distractors": [
+                "By rebooting hardware whenever any process encounters an exception.",
+                "By ignoring invalid memory reference signals in user applications.",
+                "By writing unbuffered crash dumps directly to network sockets."
+            ],
+            "rationale": f"Virtual mapping and privileged traps prevent fault cascades in {objective_text}.",
+            "difficulty": difficulty_mode,
+            "bloom": bloom_level
+        }
+    ]
+    
+    # Pick item that differs from previous_question and other_existing_questions
+    chosen = fallback_pool[0]
+    for item in fallback_pool:
+        if previous_question and item["stem"].lower() in previous_question.lower():
+            continue
+        if any(item["stem"].lower() in (oq or "").lower() for oq in (other_existing_questions or [])):
+            continue
+        chosen = item
+        break
+        
+    opts_dict = {
+        "A": chosen["correct"],
+        "B": chosen["distractors"][0],
+        "C": chosen["distractors"][1],
+        "D": chosen["distractors"][2]
+    }
+    
+    return {
+        "question": chosen["stem"],
+        "question_text": chosen["stem"],
+        "options": opts_dict,
+        "correct_option_id": "A",
+        "correct_option": "A",
+        "correct_answer": opts_dict["A"],
+        "correct_answer_text": opts_dict["A"],
+        "rationale": chosen["rationale"],
+        "difficulty_tier": chosen["difficulty"],
+        "bloom_level": chosen["bloom"],
+        "source_citation": citations[0] if citations else "Chunk #1",
+        "chunk_citations": citations,
+        "chunk_ids": chunk_ids
     }
 
 # ----------------------------------------------------------------------

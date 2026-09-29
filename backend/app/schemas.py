@@ -141,3 +141,50 @@ class SubmissionResponse(BaseModel):
     score: float
     objective_breakdown: Dict[str, Any]
     submitted_at: datetime
+
+# Self-Paced Practice & AI Generation
+class SelfPacedTestGenerateRequest(BaseModel):
+    unit_id: Optional[int] = None
+    topic: Optional[str] = None
+    difficulty: Optional[str] = "Medium" # Easy, Medium, Hard / Advanced
+    num_questions: Optional[int] = 5
+    bloom_level: Optional[str] = "Apply"
+
+# Per-Question Selective Regeneration
+class QuizItemSelectiveRegenRequest(BaseModel):
+    item_ids: Optional[List[Any]] = []
+    selected_item_ids: Optional[List[Any]] = []
+    asset_id: Optional[int] = None
+    regen_reason_category: Optional[str] = "Other" # Duplicate, Too easy/hard, Ambiguous wording, Factually incorrect, Answer leakage, Other
+    regen_reason_comment: Optional[str] = ""
+
+class QuizItemStatusUpdate(BaseModel):
+    status: str # draft, approved, needs_revision
+
+class QuizItemEditRequest(BaseModel):
+    question_text: str
+    options: Dict[str, str]
+    correct_option_id: str
+    correct_answer_text: Optional[str] = None
+    rationale: Optional[str] = None
+    difficulty_tier: Optional[str] = "Medium"
+    bloom_level: Optional[str] = "Understand"
+    source_citation: Optional[str] = None
+    edit_reason: Optional[str] = "Teacher Manual Edit"
+
+# Student Help Requests
+class StudentRequestCreate(BaseModel):
+    classroom_id: int
+    objective_id: Optional[int] = None
+    unit_id: Optional[int] = None
+    question_text: str
+    details: Optional[str] = None
+
+class StudentRequestStatusUpdate(BaseModel):
+    status: str # open, in_progress, resolved, closed
+
+class StudentRequestResponseCreate(BaseModel):
+    message: str
+
+
+

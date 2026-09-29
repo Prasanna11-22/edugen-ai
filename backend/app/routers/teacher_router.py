@@ -10,12 +10,15 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import (
     User, Classroom, Enrollment, Source, SourceVersion, Chunk, Unit,
-    Objective, Glossary, Asset, AssetVersion, QualityFlag, Assignment, Submission
+    Objective, Glossary, Asset, AssetVersion, QualityFlag, Assignment, Submission,
+    QuizItem, QuizItemVersion, StudentRequest, RequestResponse
 )
 from ..schemas import (
     ClassroomCreate, StudentCreate, BulkStudentCreate, UnitCreateRequest,
     GenerateAssetsRequest, AssetReviewAction, InlineEditAsset, QualityFlagOverride,
-    AssignmentCreate, GlossaryTermUpdate, UnitAssignToClassroomsRequest
+    AssignmentCreate, GlossaryTermUpdate, UnitAssignToClassroomsRequest,
+    QuizItemSelectiveRegenRequest, QuizItemStatusUpdate, QuizItemEditRequest,
+    StudentRequestCreate, StudentRequestStatusUpdate, StudentRequestResponseCreate
 )
 from ..auth import teacher_required, get_password_hash
 from ..services.pdf_parser import extract_text_from_pdf, clean_extracted_text
@@ -28,7 +31,8 @@ from ..services.rag_engine import (
     generate_formative_quiz,
     generate_answer_key,
     generate_differentiated_practice,
-    generate_revision_sheet
+    generate_revision_sheet,
+    regenerate_single_quiz_item
 )
 from ..services.guardrails import run_all_guardrails
 
@@ -430,10 +434,24 @@ def get_unit_details(unit_id: int, db: Session = Depends(get_db), current_teache
         latest_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == a.id).order_by(AssetVersion.version_no.desc()).first()
         flags = db.query(QualityFlag).filter(QualityFlag.asset_version_id == latest_ver.id).all() if latest_ver else []
         
+        all_vers = db.query(AssetVersion).filter(AssetVersion.asset_id == a.id).order_by(AssetVersion.version_no.desc()).all()
+        versions_list = []
+        for v in all_vers:
+            v_content = json.loads(v.content_json) if v.content_json else {}
+            versions_list.append({
+                "id": v.id,
+                "version_no": v.version_no,
+                "status": v.status,
+                "created_at": v.created_at,
+                "approved_at": v.approved_at,
+                "questions_count": len(v_content.get("questions", [])) if a.type == "quiz" else None
+            })
+
         assets_data.append({
             "asset_id": a.id,
             "type": a.type,
             "objective_id": a.objective_id,
+            "all_versions": versions_list,
             "latest_version": {
                 "id": latest_ver.id,
                 "version_no": latest_ver.version_no,
@@ -714,6 +732,17 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
                 db.add(q_flag)
             db.commit()
             
+            if asset_type == "quiz":
+                sync_quiz_items_for_asset(
+                    db=db,
+                    asset=asset,
+                    content_data=content_data,
+                    teacher_id=current_teacher.id,
+                    regen_reason="Initial Generation",
+                    regen_category="Initial Generation",
+                    force_sync=False
+                )
+            
             created_assets.append({"asset_id": asset.id, "type": asset_type, "version_no": ver_no, "flags_count": len(flags)})
 
     return {
@@ -826,6 +855,17 @@ def regenerate_single_asset(
         )
         db.add(q_flag)
     db.commit()
+
+    if asset_type == "quiz":
+        sync_quiz_items_for_asset(
+            db=db,
+            asset=asset,
+            content_data=new_content,
+            teacher_id=current_teacher.id,
+            regen_reason="Full Quiz Asset Regeneration",
+            regen_category="Full Quiz Regeneration",
+            force_sync=True
+        )
     
     return {
         "message": f"Regenerated {asset_type} as immutable Version {new_version_no}.",
@@ -837,6 +877,7 @@ def regenerate_single_asset(
     }
 
 @router.put("/asset-versions/{version_id}/inline-edit")
+@router.post("/asset-versions/{version_id}/edit")
 def inline_edit_asset(version_id: int, data: InlineEditAsset, db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
     ver = db.query(AssetVersion).filter(AssetVersion.id == version_id).first()
     if not ver:
@@ -847,7 +888,20 @@ def inline_edit_asset(version_id: int, data: InlineEditAsset, db: Session = Depe
         
     ver.content_json = json.dumps(data.content_json)
     db.commit()
-    return {"message": "Content updated successfully.", "version_id": ver.id}
+    
+    asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
+    if asset and asset.type == "quiz":
+        sync_quiz_items_for_asset(
+            db=db,
+            asset=asset,
+            content_data=data.content_json,
+            teacher_id=current_teacher.id,
+            regen_reason="Teacher Manual Edit",
+            regen_category="Manual Edit",
+            force_sync=True
+        )
+        
+    return {"message": "Content updated successfully.", "version_id": ver.id, "version_no": ver.version_no}
 
 @router.post("/asset-versions/{version_id}/approve")
 def approve_asset_version(version_id: int, action: AssetReviewAction, db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
@@ -918,6 +972,675 @@ def override_quality_flag(data: QualityFlagOverride, db: Session = Depends(get_d
     db.commit()
     
     return {"message": "Quality flag overridden with teacher note.", "flag_id": flag.id}
+
+# -------------------------------------------------------------
+# PER-QUESTION SELECTIVE REGENERATION & VERSIONING
+# -------------------------------------------------------------
+def sync_quiz_items_for_asset(
+    db: Session,
+    asset: Asset,
+    content_data: dict,
+    teacher_id: int = None,
+    regen_reason: str = "Quiz Asset Regeneration",
+    regen_category: str = "Full Quiz Regeneration",
+    force_sync: bool = False
+) -> list:
+    """
+    Synchronizes, auto-backfills, or creates new versions in QuizItem and QuizItemVersion records.
+    When a quiz is regenerated (force_sync=True or new questions provided), increments version and stores version history.
+    """
+    if asset.type not in ["quiz", "practice_easy", "practice_advanced"]:
+        return []
+        
+    questions = content_data.get("questions", [])
+    if not questions:
+        return []
+
+    existing_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+    
+    if existing_items and not force_sync:
+        return existing_items
+
+    latest_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+    init_status = latest_ver.status if latest_ver and latest_ver.status in ["approved", "needs_revision"] else "draft"
+
+    created_items = []
+    
+    # If no existing items at all -> Initial backfill
+    if not existing_items:
+        for idx, q in enumerate(questions):
+            q_stem = q.get("question") or q.get("question_text") or q.get("stem") or f"Question {idx+1}"
+            opts = q.get("options", {})
+            corr = q.get("correct_option_id") or q.get("correct_option") or q.get("_correct_option") or "A"
+            corr_text = q.get("correct_answer") or q.get("correct_answer_text") or opts.get(corr, "")
+            rat = q.get("rationale") or q.get("explanation", "")
+            diff = q.get("difficulty_tier", "Medium")
+            bloom = q.get("bloom_level", "Understand")
+            cit = q.get("source_citation") or q.get("citation", "")
+            
+            q_status = q.get("status", init_status)
+            v_no = q.get("version_no", 1)
+            
+            item = QuizItem(
+                asset_id=asset.id,
+                item_index=idx,
+                question_text=q_stem,
+                options_json=json.dumps(opts),
+                correct_option_id=str(corr).upper(),
+                correct_answer_text=str(corr_text),
+                rationale=rat,
+                difficulty_tier=diff,
+                bloom_level=bloom,
+                source_citation=cit,
+                status=q_status,
+                current_version_no=v_no,
+                approved_at=datetime.utcnow() if q_status == "approved" else None
+            )
+            db.add(item)
+            db.commit()
+            db.refresh(item)
+            
+            item_ver = QuizItemVersion(
+                quiz_item_id=item.id,
+                version_no=v_no,
+                question_text=q_stem,
+                options_json=json.dumps(opts),
+                correct_option_id=str(corr).upper(),
+                correct_answer_text=str(corr_text),
+                rationale=rat,
+                difficulty_tier=diff,
+                bloom_level=bloom,
+                source_citation=cit,
+                status=q_status,
+                regen_reason=regen_reason or "Initial Generation",
+                regen_reason_category=regen_category or "Initial Generation",
+                triggered_by=teacher_id
+            )
+            db.add(item_ver)
+            db.commit()
+            created_items.append(item)
+    else:
+        # Existing items exist and force_sync is True (e.g. Regenerate Quiz was called)
+        for idx, q in enumerate(questions):
+            q_stem = q.get("question") or q.get("question_text") or q.get("stem") or f"Question {idx+1}"
+            opts = q.get("options", {})
+            corr = q.get("correct_option_id") or q.get("correct_option") or q.get("_correct_option") or "A"
+            corr_text = q.get("correct_answer") or q.get("correct_answer_text") or opts.get(corr, "")
+            rat = q.get("rationale") or q.get("explanation", "")
+            diff = q.get("difficulty_tier", "Medium")
+            bloom = q.get("bloom_level", "Understand")
+            cit = q.get("source_citation") or q.get("citation", "")
+            
+            if idx < len(existing_items):
+                item = existing_items[idx]
+                new_v_no = (item.current_version_no or 1) + 1
+                item.question_text = q_stem
+                item.options_json = json.dumps(opts)
+                item.correct_option_id = str(corr).upper()
+                item.correct_answer_text = str(corr_text)
+                item.rationale = rat
+                item.difficulty_tier = diff
+                item.bloom_level = bloom
+                item.source_citation = cit
+                item.status = "draft"
+                item.current_version_no = new_v_no
+                item.approved_at = None
+                db.commit()
+                db.refresh(item)
+                
+                item_ver = QuizItemVersion(
+                    quiz_item_id=item.id,
+                    version_no=new_v_no,
+                    question_text=q_stem,
+                    options_json=json.dumps(opts),
+                    correct_option_id=str(corr).upper(),
+                    correct_answer_text=str(corr_text),
+                    rationale=rat,
+                    difficulty_tier=diff,
+                    bloom_level=bloom,
+                    source_citation=cit,
+                    status="draft",
+                    regen_reason=regen_reason or "Full Quiz Regeneration",
+                    regen_reason_category=regen_category or "Full Quiz Regeneration",
+                    triggered_by=teacher_id
+                )
+                db.add(item_ver)
+                db.commit()
+                created_items.append(item)
+            else:
+                # Extra question added
+                item = QuizItem(
+                    asset_id=asset.id,
+                    item_index=idx,
+                    question_text=q_stem,
+                    options_json=json.dumps(opts),
+                    correct_option_id=str(corr).upper(),
+                    correct_answer_text=str(corr_text),
+                    rationale=rat,
+                    difficulty_tier=diff,
+                    bloom_level=bloom,
+                    source_citation=cit,
+                    status="draft",
+                    current_version_no=1
+                )
+                db.add(item)
+                db.commit()
+                db.refresh(item)
+                
+                item_ver = QuizItemVersion(
+                    quiz_item_id=item.id,
+                    version_no=1,
+                    question_text=q_stem,
+                    options_json=json.dumps(opts),
+                    correct_option_id=str(corr).upper(),
+                    correct_answer_text=str(corr_text),
+                    rationale=rat,
+                    difficulty_tier=diff,
+                    bloom_level=bloom,
+                    source_citation=cit,
+                    status="draft",
+                    regen_reason=regen_reason or "Full Quiz Regeneration",
+                    regen_reason_category=regen_category or "Full Quiz Regeneration",
+                    triggered_by=teacher_id
+                )
+                db.add(item_ver)
+                db.commit()
+                created_items.append(item)
+                
+    return created_items or existing_items
+
+@router.get("/assets/{asset_id}/quiz-items")
+def get_asset_quiz_items(
+    asset_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+        
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this asset")
+        
+    latest_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+    content_dict = json.loads(latest_ver.content_json) if latest_ver and latest_ver.content_json else {}
+    
+    # Auto-backfill / sync items if not yet present
+    quiz_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+    if not quiz_items and content_dict.get("questions"):
+        quiz_items = sync_quiz_items_for_asset(db, asset, content_dict, current_teacher.id)
+        
+    res = []
+    for it in quiz_items:
+        v_count = db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id == it.id).count()
+        if v_count == 0:
+            base_ver = QuizItemVersion(
+                quiz_item_id=it.id,
+                version_no=it.current_version_no or 1,
+                question_text=it.question_text,
+                options_json=it.options_json,
+                correct_option_id=it.correct_option_id,
+                correct_answer_text=it.correct_answer_text,
+                rationale=it.rationale,
+                difficulty_tier=it.difficulty_tier,
+                bloom_level=it.bloom_level,
+                source_citation=it.source_citation,
+                status=it.status or "draft",
+                regen_reason="Initial Generation",
+                regen_reason_category="Initial Generation",
+                triggered_by=current_teacher.id
+            )
+            db.add(base_ver)
+            db.commit()
+            v_count = 1
+
+        opts = json.loads(it.options_json) if it.options_json else {}
+        res.append({
+            "id": it.id,
+            "asset_id": it.asset_id,
+            "item_index": it.item_index,
+            "question_text": it.question_text,
+            "options": opts,
+            "correct_option_id": it.correct_option_id,
+            "correct_answer_text": it.correct_answer_text or opts.get(it.correct_option_id, ""),
+            "rationale": it.rationale,
+            "difficulty_tier": it.difficulty_tier,
+            "bloom_level": it.bloom_level,
+            "source_citation": it.source_citation,
+            "status": it.status,
+            "current_version_no": it.current_version_no,
+            "versions_count": v_count,
+            "version_count": v_count,
+            "created_at": it.created_at,
+            "approved_at": it.approved_at
+        })
+    return res
+
+@router.post("/quiz-items/regenerate-selected")
+def regenerate_selected_quiz_items(
+    data: QuizItemSelectiveRegenRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    raw_ids = data.item_ids or data.selected_item_ids or []
+    if not raw_ids:
+        raise HTTPException(status_code=400, detail="Please select at least one question to regenerate.")
+        
+    # 1. Resolve asset and ensure items are synced
+    asset = None
+    if data.asset_id:
+        asset = db.query(Asset).filter(Asset.id == data.asset_id).first()
+        if asset:
+            latest_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+            content_dict = json.loads(latest_ver.content_json) if latest_ver and latest_ver.content_json else {}
+            sync_quiz_items_for_asset(db, asset, content_dict, current_teacher.id)
+
+    # 2. Resolve target QuizItem records
+    items = []
+    numeric_ids = []
+    for raw in raw_ids:
+        if isinstance(raw, int) or (isinstance(raw, str) and raw.isdigit()):
+            numeric_ids.append(int(raw))
+
+    if numeric_ids:
+        items.extend(db.query(QuizItem).filter(QuizItem.id.in_(numeric_ids)).all())
+
+    # Fallback to index-based matching if strings like "synth-0" or "q1" were passed
+    if len(items) < len(raw_ids) and asset:
+        asset_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+        for raw in raw_ids:
+            idx = None
+            if isinstance(raw, str):
+                if raw.startswith("synth-"):
+                    try: idx = int(raw.replace("synth-", ""))
+                    except: pass
+                elif raw.startswith("q") and raw[1:].isdigit():
+                    try: idx = int(raw[1:]) - 1
+                    except: pass
+            if idx is not None and 0 <= idx < len(asset_items):
+                target_item = asset_items[idx]
+                if target_item not in items:
+                    items.append(target_item)
+
+    if not items and asset:
+        asset_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+        if asset_items:
+            items = [asset_items[0]]
+
+    if not items:
+        raise HTTPException(status_code=404, detail="No matching question items found to regenerate.")
+        
+    first_asset = db.query(Asset).filter(Asset.id == items[0].asset_id).first()
+    unit = db.query(Unit).filter(Unit.id == first_asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this unit.")
+        
+    source = db.query(Source).filter(Source.id == unit.source_id).first()
+    latest_source_ver = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).order_by(SourceVersion.version_no.desc()).first() if source else None
+    chunk_recs = db.query(Chunk).filter(Chunk.source_version_id == latest_source_ver.id).order_by(Chunk.chunk_index.asc()).all() if latest_source_ver else []
+    chunks = [{"id": c.id, "chunk_index": c.chunk_index, "text": c.text} for c in chunk_recs]
+    
+    glossary_recs = db.query(Glossary).filter(Glossary.unit_id == unit.id).all()
+    glossary = [{"term": g.term, "canonical_wording": g.canonical_wording} for g in glossary_recs]
+    
+    # Process each asset involved (usually 1 asset)
+    asset_ids = list(set([it.asset_id for it in items]))
+    regenerated_details = []
+    
+    for a_id in asset_ids:
+        asset = db.query(Asset).filter(Asset.id == a_id).first()
+        all_asset_items = db.query(QuizItem).filter(QuizItem.asset_id == a_id).order_by(QuizItem.item_index.asc()).all()
+        obj = db.query(Objective).filter(Objective.id == asset.objective_id).first() if asset.objective_id else db.query(Objective).filter(Objective.unit_id == unit.id).first()
+        obj_text = obj.text if obj else unit.title
+        
+        target_items = [it for it in items if it.asset_id == a_id]
+        
+        for it in target_items:
+            # Collect other questions to avoid duplicate generation
+            other_questions = [other.question_text for other in all_asset_items if other.id != it.id]
+            prev_opts = json.loads(it.options_json) if it.options_json else {}
+            
+            new_q = regenerate_single_quiz_item(
+                previous_question=it.question_text,
+                previous_options=prev_opts,
+                previous_correct=it.correct_option_id,
+                objective_text=obj_text,
+                chunks=chunks,
+                glossary=glossary,
+                bloom_level=it.bloom_level or (obj.bloom_level if obj else "Understand"),
+                difficulty_mode=it.difficulty_tier or "Medium",
+                regen_reason_category=data.regen_reason_category,
+                regen_reason_comment=data.regen_reason_comment or "",
+                other_existing_questions=other_questions
+            )
+            
+            # Bump version and set status to draft
+            it.current_version_no += 1
+            it.question_text = new_q["question"]
+            it.options_json = json.dumps(new_q["options"])
+            it.correct_option_id = new_q["correct_option_id"]
+            it.correct_answer_text = new_q.get("correct_answer_text") or new_q.get("correct_answer")
+            it.rationale = new_q.get("rationale")
+            it.difficulty_tier = new_q.get("difficulty_tier", it.difficulty_tier)
+            it.bloom_level = new_q.get("bloom_level", it.bloom_level)
+            it.source_citation = new_q.get("source_citation", it.source_citation)
+            it.status = "draft"
+            it.approved_at = None
+            
+            # Add version record
+            new_ver = QuizItemVersion(
+                quiz_item_id=it.id,
+                version_no=it.current_version_no,
+                question_text=it.question_text,
+                options_json=it.options_json,
+                correct_option_id=it.correct_option_id,
+                correct_answer_text=it.correct_answer_text,
+                rationale=it.rationale,
+                difficulty_tier=it.difficulty_tier,
+                bloom_level=it.bloom_level,
+                source_citation=it.source_citation,
+                status="draft",
+                regen_reason=data.regen_reason_comment,
+                regen_reason_category=data.regen_reason_category,
+                triggered_by=current_teacher.id
+            )
+            db.add(new_ver)
+            db.commit()
+            
+            regenerated_details.append({
+                "item_id": it.id,
+                "item_index": it.item_index,
+                "version_no": it.current_version_no,
+                "question_text": it.question_text
+            })
+            
+        # Synchronize latest AssetVersion content_json
+        latest_asset_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == a_id).order_by(AssetVersion.version_no.desc()).first()
+        if latest_asset_ver:
+            content_dict = json.loads(latest_asset_ver.content_json) if latest_asset_ver.content_json else {}
+            
+            updated_questions = []
+            for q_it in all_asset_items:
+                opts = json.loads(q_it.options_json) if q_it.options_json else {}
+                corr = q_it.correct_option_id
+                corr_text = q_it.correct_answer_text or opts.get(corr, "")
+                updated_questions.append({
+                    "id": f"q{q_it.item_index+1}",
+                    "quiz_item_id": q_it.id,
+                    "question": q_it.question_text,
+                    "question_text": q_it.question_text,
+                    "options": opts,
+                    "correct_option_id": corr,
+                    "correct_option": corr,
+                    "correct_answer": corr_text,
+                    "_correct_option": corr,
+                    "_correct_answer_text": corr_text,
+                    "rationale": q_it.rationale,
+                    "_rationale": q_it.rationale,
+                    "difficulty_tier": q_it.difficulty_tier,
+                    "bloom_level": q_it.bloom_level,
+                    "source_citation": q_it.source_citation,
+                    "_citation": q_it.source_citation,
+                    "status": q_it.status,
+                    "version_no": q_it.current_version_no
+                })
+                
+            content_dict["questions"] = updated_questions
+            # Reset parent asset version status to draft since items were regenerated
+            latest_asset_ver.status = "draft"
+            latest_asset_ver.content_json = json.dumps(content_dict)
+            
+            # Re-run Quality Guardrails on whole quiz (§5 & Testing requirement)
+            flags = run_all_guardrails(
+                asset_type=asset.type,
+                content_json=content_dict,
+                retrieved_chunks=chunks,
+                requested_bloom_level=obj.bloom_level if obj else "Understand",
+                objective_id=obj.id if obj else None
+            )
+            # Remove old flags and store updated flags
+            db.query(QualityFlag).filter(QualityFlag.asset_version_id == latest_asset_ver.id).delete(synchronize_session=False)
+            for f in flags:
+                q_flag = QualityFlag(
+                    asset_version_id=latest_asset_ver.id,
+                    flag_type=f["flag_type"],
+                    severity=f["severity"],
+                    message=f["message"]
+                )
+                db.add(q_flag)
+            db.commit()
+            
+    return {
+        "message": f"Successfully regenerated {len(items)} question(s) with reason '{data.regen_reason_category}'.",
+        "regenerated_count": len(items),
+        "regenerated_items": regenerated_details
+    }
+
+@router.get("/quiz-items/{item_id}/history")
+def get_quiz_item_history(
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    item = db.query(QuizItem).filter(QuizItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Question item not found")
+        
+    asset = db.query(Asset).filter(Asset.id == item.asset_id).first()
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this question history")
+        
+    versions = db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id == item_id).order_by(QuizItemVersion.version_no.desc()).all()
+    if not versions:
+        # Auto-create baseline version 1 if missing
+        base_ver = QuizItemVersion(
+            quiz_item_id=item.id,
+            version_no=item.current_version_no or 1,
+            question_text=item.question_text,
+            options_json=item.options_json,
+            correct_option_id=item.correct_option_id,
+            correct_answer_text=item.correct_answer_text,
+            rationale=item.rationale,
+            difficulty_tier=item.difficulty_tier,
+            bloom_level=item.bloom_level,
+            source_citation=item.source_citation,
+            status=item.status or "draft",
+            regen_reason="Initial Generation",
+            regen_reason_category="Initial Generation",
+            triggered_by=current_teacher.id
+        )
+        db.add(base_ver)
+        db.commit()
+        db.refresh(base_ver)
+        versions = [base_ver]
+
+    res = []
+    for v in versions:
+        teacher_user = db.query(User).filter(User.id == v.triggered_by).first() if v.triggered_by else None
+        opts = json.loads(v.options_json) if v.options_json else {}
+        res.append({
+            "id": v.id,
+            "version_no": v.version_no,
+            "question_text": v.question_text,
+            "options": opts,
+            "correct_option_id": v.correct_option_id,
+            "correct_answer_text": v.correct_answer_text or opts.get(v.correct_option_id, ""),
+            "rationale": v.rationale,
+            "difficulty_tier": v.difficulty_tier,
+            "bloom_level": v.bloom_level,
+            "source_citation": v.source_citation,
+            "status": v.status,
+            "regen_reason": v.regen_reason,
+            "regen_reason_category": v.regen_reason_category,
+            "triggered_by": v.triggered_by,
+            "triggered_by_name": teacher_user.name if teacher_user else "Instructor",
+            "created_at": v.created_at
+        })
+    return {
+        "quiz_item_id": item.id,
+        "current_status": item.status,
+        "history": res
+    }
+
+@router.put("/quiz-items/{item_id}")
+@router.post("/quiz-items/{item_id}/edit")
+def edit_quiz_item(
+    item_id: int,
+    data: QuizItemEditRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    item = db.query(QuizItem).filter(QuizItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Question item not found")
+        
+    asset = db.query(Asset).filter(Asset.id == item.asset_id).first()
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this question")
+        
+    # Bump version
+    new_v_no = (item.current_version_no or 1) + 1
+    item.question_text = data.question_text.strip()
+    item.options_json = json.dumps(data.options)
+    item.correct_option_id = data.correct_option_id.strip().upper()
+    corr_text = data.correct_answer_text or data.options.get(data.correct_option_id.strip().upper(), "")
+    item.correct_answer_text = corr_text
+    item.rationale = data.rationale
+    item.difficulty_tier = data.difficulty_tier or "Medium"
+    item.bloom_level = data.bloom_level or "Understand"
+    if data.source_citation:
+        item.source_citation = data.source_citation
+    item.status = "draft"
+    item.current_version_no = new_v_no
+    item.approved_at = None
+    db.commit()
+    db.refresh(item)
+    
+    # Store into QuizItemVersion history
+    new_item_ver = QuizItemVersion(
+        quiz_item_id=item.id,
+        version_no=new_v_no,
+        question_text=item.question_text,
+        options_json=item.options_json,
+        correct_option_id=item.correct_option_id,
+        correct_answer_text=item.correct_answer_text,
+        rationale=item.rationale,
+        difficulty_tier=item.difficulty_tier,
+        bloom_level=item.bloom_level,
+        source_citation=item.source_citation,
+        status="draft",
+        regen_reason=data.edit_reason or "Teacher Manual Edit",
+        regen_reason_category="Teacher Manual Edit",
+        triggered_by=current_teacher.id
+    )
+    db.add(new_item_ver)
+    db.commit()
+    
+    # Sync with parent AssetVersion content_json
+    all_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+    latest_asset_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+    
+    if latest_asset_ver:
+        content_dict = json.loads(latest_asset_ver.content_json) if latest_asset_ver.content_json else {}
+        updated_questions = []
+        for q_it in all_items:
+            opts = json.loads(q_it.options_json) if q_it.options_json else {}
+            corr = q_it.correct_option_id
+            c_text = q_it.correct_answer_text or opts.get(corr, "")
+            updated_questions.append({
+                "id": f"q{q_it.item_index+1}",
+                "quiz_item_id": q_it.id,
+                "question": q_it.question_text,
+                "question_text": q_it.question_text,
+                "options": opts,
+                "correct_option_id": corr,
+                "correct_option": corr,
+                "correct_answer": c_text,
+                "_correct_option": corr,
+                "_correct_answer_text": c_text,
+                "rationale": q_it.rationale,
+                "_rationale": q_it.rationale,
+                "difficulty_tier": q_it.difficulty_tier,
+                "bloom_level": q_it.bloom_level,
+                "source_citation": q_it.source_citation,
+                "_citation": q_it.source_citation,
+                "status": q_it.status,
+                "version_no": q_it.current_version_no
+            })
+            
+        content_dict["questions"] = updated_questions
+        latest_asset_ver.status = "draft"
+        latest_asset_ver.content_json = json.dumps(content_dict)
+        db.commit()
+        
+    return {
+        "message": f"Question #{item.item_index+1} updated and saved as Version {new_v_no}.",
+        "id": item.id,
+        "version_no": new_v_no,
+        "question_text": item.question_text,
+        "status": item.status
+    }
+
+@router.post("/quiz-items/{item_id}/status")
+def update_quiz_item_status(
+    item_id: int,
+    data: QuizItemStatusUpdate,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    item = db.query(QuizItem).filter(QuizItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Question item not found")
+        
+    asset = db.query(Asset).filter(Asset.id == item.asset_id).first()
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this question")
+        
+    item.status = data.status
+    if data.status == "approved":
+        item.approved_at = datetime.utcnow()
+    else:
+        item.approved_at = None
+        
+    # Also update latest item version status
+    latest_item_ver = db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id == item.id).order_by(QuizItemVersion.version_no.desc()).first()
+    if latest_item_ver:
+        latest_item_ver.status = data.status
+        
+    db.commit()
+    
+    # Sync with parent AssetVersion content_json
+    all_items = db.query(QuizItem).filter(QuizItem.asset_id == asset.id).order_by(QuizItem.item_index.asc()).all()
+    latest_asset_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+    
+    if latest_asset_ver:
+        content_dict = json.loads(latest_asset_ver.content_json) if latest_asset_ver.content_json else {}
+        questions = content_dict.get("questions", [])
+        for q in questions:
+            if q.get("quiz_item_id") == item.id or q.get("id") == f"q{item.item_index+1}":
+                q["status"] = item.status
+                
+        all_approved = all(it.status == "approved" for it in all_items)
+        if all_approved:
+            latest_asset_ver.status = "approved"
+            latest_asset_ver.approved_at = datetime.utcnow()
+            latest_asset_ver.approved_by = current_teacher.id
+        elif latest_asset_ver.status == "approved":
+            latest_asset_ver.status = "draft"
+            
+        latest_asset_ver.content_json = json.dumps(content_dict)
+        db.commit()
+        
+    return {
+        "message": f"Question {item.item_index+1} marked as '{item.status}'.",
+        "id": item.id,
+        "status": item.status,
+        "approved_at": item.approved_at
+    }
 
 # -------------------------------------------------------------
 # ASSIGNMENTS & ANALYTICS ALIGNMENT MAP (§3.2 & §7)
@@ -1126,11 +1849,253 @@ def get_classroom_analytics(classroom_id: int, db: Session = Depends(get_db), cu
             "mastery_signal": "Mastery Achieved" if avg_mastery >= 75 else ("Developing" if avg_mastery >= 50 else "Needs Practice")
         })
         
+    # Query student_requests where status IN ('open', 'in_progress') for Class Struggle Signals
+    active_requests = db.query(StudentRequest).filter(
+        StudentRequest.classroom_id == classroom.id,
+        StudentRequest.status.in_(["open", "in_progress"])
+    ).all()
+    
+    grouped_counts = {}
+    general_count = 0
+    for req in active_requests:
+        if req.objective_id is None:
+            general_count += 1
+        else:
+            obj_id = req.objective_id
+            if obj_id not in grouped_counts:
+                grouped_counts[obj_id] = 0
+            grouped_counts[obj_id] += 1
+            
+    struggle_signals = []
+    for obj_id, count in grouped_counts.items():
+        obj = db.query(Objective).filter(Objective.id == obj_id).first()
+        unit = db.query(Unit).filter(Unit.id == obj.unit_id).first() if obj else None
+        has_warning = count >= 3
+        struggle_signals.append({
+            "objective_id": obj_id,
+            "objective_text": obj.text if obj else f"Objective #{obj_id}",
+            "unit_id": unit.id if unit else None,
+            "unit_title": unit.title if unit else "",
+            "request_count": count,
+            "has_warning": has_warning,
+            "warning_label": "⚠ Multiple students need help" if has_warning else None
+        })
+        
+    struggle_signals.sort(key=lambda x: x["request_count"], reverse=True)
+
     return {
         "classroom_name": classroom.name,
         "total_enrolled": len(enrolled_students),
         "total_submissions": len(submissions),
         "enrolled_students": enrolled_students,
         "objective_alignment_map": alignment_map,
+        "struggle_signals": {
+            "signals": struggle_signals,
+            "general_requests_count": general_count,
+            "total_active_requests": len(active_requests)
+        },
         "student_results": student_scores
     }
+
+
+# ----------------------------------------------------------------------
+# CLASS STRUGGLE SIGNALS & STUDENT REQUESTS ENDPOINTS
+# ----------------------------------------------------------------------
+@router.get("/classrooms/{classroom_id}/struggle-signals")
+def get_classroom_struggle_signals(
+    classroom_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+        
+    active_requests = db.query(StudentRequest).filter(
+        StudentRequest.classroom_id == classroom.id,
+        StudentRequest.status.in_(["open", "in_progress"])
+    ).all()
+    
+    grouped_counts = {}
+    general_count = 0
+    
+    for req in active_requests:
+        if req.objective_id is None:
+            general_count += 1
+        else:
+            obj_id = req.objective_id
+            if obj_id not in grouped_counts:
+                grouped_counts[obj_id] = 0
+            grouped_counts[obj_id] += 1
+            
+    signals = []
+    for obj_id, count in grouped_counts.items():
+        obj = db.query(Objective).filter(Objective.id == obj_id).first()
+        unit = db.query(Unit).filter(Unit.id == obj.unit_id).first() if obj else None
+        has_warning = count >= 3
+        signals.append({
+            "objective_id": obj_id,
+            "objective_text": obj.text if obj else f"Objective #{obj_id}",
+            "unit_id": unit.id if unit else None,
+            "unit_title": unit.title if unit else "",
+            "request_count": count,
+            "has_warning": has_warning,
+            "warning_label": "⚠ Multiple students need help" if has_warning else None
+        })
+        
+    signals.sort(key=lambda x: x["request_count"], reverse=True)
+    
+    return {
+        "classroom_id": classroom.id,
+        "classroom_name": classroom.name,
+        "signals": signals,
+        "general_requests_count": general_count,
+        "total_active_requests": len(active_requests),
+        "total_struggling_objectives": len(signals)
+    }
+
+
+@router.get("/classrooms/{classroom_id}/student-requests")
+def get_classroom_student_requests(
+    classroom_id: int,
+    objective_id: Optional[int] = None,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+        
+    query = db.query(StudentRequest).filter(StudentRequest.classroom_id == classroom.id)
+    
+    if objective_id is not None:
+        query = query.filter(StudentRequest.objective_id == objective_id)
+        
+    if status:
+        if status.lower() == "active":
+            query = query.filter(StudentRequest.status.in_(["open", "in_progress"]))
+        else:
+            query = query.filter(StudentRequest.status == status.lower())
+            
+    requests_list = query.order_by(StudentRequest.created_at.desc()).all()
+    
+    res = []
+    for r in requests_list:
+        stu = db.query(User).filter(User.id == r.student_id).first()
+        obj = db.query(Objective).filter(Objective.id == r.objective_id).first() if r.objective_id else None
+        unit = db.query(Unit).filter(Unit.id == r.unit_id).first() if r.unit_id else (obj.unit if obj else None)
+        
+        responses = []
+        for resp in r.responses:
+            resp_user = db.query(User).filter(User.id == resp.user_id).first()
+            responses.append({
+                "id": resp.id,
+                "user_id": resp.user_id,
+                "user_name": resp_user.name if resp_user else "User",
+                "user_role": resp_user.role if resp_user else "unknown",
+                "message": resp.message,
+                "created_at": resp.created_at.isoformat()
+            })
+            
+        res.append({
+            "id": r.id,
+            "student_id": r.student_id,
+            "student_name": stu.name if stu else "Unknown Student",
+            "student_email": stu.email if stu else "",
+            "classroom_id": r.classroom_id,
+            "objective_id": r.objective_id,
+            "objective_text": obj.text if obj else None,
+            "unit_id": unit.id if unit else None,
+            "unit_title": unit.title if unit else "",
+            "question_text": r.question_text,
+            "details": r.details,
+            "status": r.status,
+            "created_at": r.created_at.isoformat(),
+            "responses": responses
+        })
+        
+    return res
+
+
+@router.post("/student-requests/{request_id}/status")
+def update_student_request_status(
+    request_id: int,
+    data: StudentRequestStatusUpdate,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    req = db.query(StudentRequest).filter(StudentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    classroom = db.query(Classroom).filter(Classroom.id == req.classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    if data.status not in ["open", "in_progress", "resolved", "closed"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+        
+    req.status = data.status
+    db.commit()
+    db.refresh(req)
+    return {"id": req.id, "status": req.status, "message": f"Request status updated to {req.status}"}
+
+
+@router.post("/student-requests/{request_id}/respond")
+def respond_to_student_request(
+    request_id: int,
+    data: StudentRequestResponseCreate,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    req = db.query(StudentRequest).filter(StudentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    classroom = db.query(Classroom).filter(Classroom.id == req.classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    if not data.message.strip():
+        raise HTTPException(status_code=400, detail="Response message cannot be empty")
+        
+    response = RequestResponse(
+        request_id=req.id,
+        user_id=current_teacher.id,
+        message=data.message.strip()
+    )
+    db.add(response)
+    
+    if req.status == "open":
+        req.status = "in_progress"
+        
+    db.commit()
+    db.refresh(response)
+    return {"id": response.id, "request_id": req.id, "status": req.status, "message": "Response submitted"}
+
+
+@router.get("/classrooms/{classroom_id}/objectives")
+def get_classroom_objectives(
+    classroom_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+        
+    units = db.query(Unit).filter(Unit.teacher_id == current_teacher.id).all()
+    res = []
+    for u in units:
+        for o in u.objectives:
+            res.append({
+                "objective_id": o.id,
+                "objective_text": o.text,
+                "unit_id": u.id,
+                "unit_title": u.title,
+                "bloom_level": o.bloom_level
+            })
+    return res
+
+

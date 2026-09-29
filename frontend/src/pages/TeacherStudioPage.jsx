@@ -5,7 +5,7 @@ import {
   Sparkles, Upload, FileText, CheckCircle2, AlertTriangle, Layers, 
   BookOpen, Edit3, RefreshCw, Send, Check, ShieldCheck, Hash, Target, 
   ArrowRight, ShieldAlert, FileCode, CheckSquare, Plus, Trash2, Calendar, Clock,
-  Eye, BarChart3, Users, ChevronRight, FileCheck, Search, HelpCircle, Library, Database, Lock, X, Key, Lightbulb
+  Eye, BarChart3, Users, ChevronRight, FileCheck, Search, HelpCircle, Library, Database, Lock, X, Key, Lightbulb, History, CheckCheck
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -50,7 +50,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const [assigning, setAssigning] = useState(false);
 
   // Review Studio Tab
-  const [activeAssetTab, setActiveAssetTab] = useState('explanation'); // explanation, example, quiz, revision_sheet, source_chunks, glossary
+  const [activeAssetTab, setActiveAssetTab] = useState('explanation'); // explanation, example, quiz, practice_easy, practice_advanced, revision_sheet, source_chunks, glossary
   const [quizCountToGenerate, setQuizCountToGenerate] = useState(3);
   const [quizDifficultyToGenerate, setQuizDifficultyToGenerate] = useState('Medium');
   const [editingContent, setEditingContent] = useState(false);
@@ -58,6 +58,35 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [unitToDelete, setUnitToDelete] = useState(null);
   const [deletingUnit, setDeletingUnit] = useState(false);
+
+  // Per-Question Selective Regeneration & History State
+  const [quizItemsList, setQuizItemsList] = useState([]);
+  const [loadingQuizItems, setLoadingQuizItems] = useState(false);
+  const [selectedQuizItemIds, setSelectedQuizItemIds] = useState([]);
+  const [showRegenModal, setShowRegenModal] = useState(false);
+  const [regenReasonCategory, setRegenReasonCategory] = useState('Ambiguous wording');
+  const [regenReasonComment, setRegenReasonComment] = useState('');
+  const [regeneratingQuizItems, setRegeneratingQuizItems] = useState(false);
+
+  // History Modal State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyItem, setHistoryItem] = useState(null);
+  const [historyData, setHistoryData] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Question Manual Edit Modal State
+  const [showEditQuestionModal, setShowEditQuestionModal] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState(null);
+  const [questionFormData, setQuestionFormData] = useState({
+    question_text: '',
+    options: { A: '', B: '', C: '', D: '' },
+    correct_option_id: 'A',
+    rationale: '',
+    difficulty_tier: 'Medium',
+    bloom_level: 'Understand',
+    edit_reason: ''
+  });
+  const [savingQuestionEdit, setSavingQuestionEdit] = useState(false);
 
   useEffect(() => {
     fetchClassrooms();
@@ -123,10 +152,26 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const safeApiResponse = async (res, defaultErrMsg = "Request failed") => {
     const text = await res.text();
     try {
-      return JSON.parse(text);
+      const data = JSON.parse(text);
+      if (!res.ok) {
+        let msg = defaultErrMsg;
+        if (data && typeof data === 'object') {
+          if (typeof data.detail === 'string') {
+            msg = data.detail;
+          } else if (Array.isArray(data.detail)) {
+            msg = data.detail.map(d => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
+          } else if (data.message) {
+            msg = data.message;
+          } else {
+            msg = JSON.stringify(data);
+          }
+        }
+        throw new Error(msg);
+      }
+      return data;
     } catch (e) {
       if (!res.ok) {
-        throw new Error(text && text.length < 200 ? text : `Server Error (${res.status}): Please ensure backend is running.`);
+        throw new Error(e.message || (text && text.length < 200 ? text : `Server Error (${res.status})`));
       }
       return text;
     }
@@ -392,22 +437,239 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const handleSaveEdit = async (versionId) => {
     try {
       const parsed = JSON.parse(editText);
-      const res = await fetch(`/api/teacher/asset-versions/${versionId}/edit`, {
+      const res = await fetch(`/api/teacher/asset-versions/${versionId}/inline-edit`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ content_json: parsed })
+      });
+      if (res.ok) {
+        const data = await safeApiResponse(res);
+        showToast(data.message || `Saved as Version ${data.version_no || ''}`, "success");
+        setEditingContent(false);
+        await fetchUnitDetails(currentUnitId);
+        if (currentActiveAsset) {
+          await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+        }
+      } else {
+        const errData = await safeApiResponse(res);
+        showToast(errData.detail || "Failed to save asset edit", "error");
+      }
+    } catch (err) {
+      showToast("Invalid JSON syntax or save error.", "error");
+    }
+  };
+
+  // Per-Question Handlers
+  const fetchQuizItems = async (assetId) => {
+    if (!assetId) return [];
+    setLoadingQuizItems(true);
+    try {
+      const res = await fetch(`/api/teacher/assets/${assetId}/quiz-items`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (data.items || []);
+        setQuizItemsList(list);
+        return list;
+      }
+    } catch (err) {
+      console.error("Error fetching quiz items", err);
+    } finally {
+      setLoadingQuizItems(false);
+    }
+    return [];
+  };
+
+  const handleToggleItemStatus = async (item) => {
+    let targetId = typeof item.id === 'number' ? item.id : null;
+    let list = quizItemsList;
+    if (!targetId && (!list || list.length === 0) && currentActiveAsset) {
+      list = await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+    }
+    if (!targetId && list && list.length > 0) {
+      const match = list.find(x => x.item_index === item.item_index || x.question_text === item.question_text);
+      if (match) targetId = match.id;
+    }
+    if (!targetId) return;
+
+    const newStatus = item.status === 'approved' ? 'draft' : 'approved';
+    try {
+      const res = await fetch(`/api/teacher/quiz-items/${targetId}/status`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ content: parsed })
+        body: JSON.stringify({ status: newStatus })
       });
       if (res.ok) {
-        const data = await safeApiResponse(res);
-        showToast(`Saved as immutable Version ${data.version_no}`, "success");
-        setEditingContent(false);
-        await fetchUnitDetails(currentUnitId);
+        showToast(`Question #${item.item_index + 1} marked as ${newStatus.toUpperCase()}`, "success");
+        if (currentActiveAsset) {
+          await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+          await fetchUnitDetails(currentUnitId);
+        }
+      } else {
+        const errData = await safeApiResponse(res);
+        showToast(errData.detail || "Failed to update item status", "error");
       }
     } catch (err) {
-      showToast("Invalid JSON syntax or save error.", "error");
+      showToast("Error updating question status", "error");
+    }
+  };
+
+  const handleOpenItemHistory = async (item) => {
+    let targetId = typeof item.id === 'number' ? item.id : null;
+    let list = quizItemsList;
+    
+    setHistoryItem(item);
+    setShowHistoryModal(true);
+    setLoadingHistory(true);
+
+    if (!targetId && (!list || list.length === 0) && currentActiveAsset) {
+      list = await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+    }
+    if (!targetId && list && list.length > 0) {
+      const match = list.find(x => x.item_index === item.item_index || x.question_text === item.question_text);
+      if (match) targetId = match.id;
+    }
+
+    if (targetId) {
+      try {
+        const res = await fetch(`/api/teacher/quiz-items/${targetId}/history`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setHistoryData(data);
+        }
+      } catch (err) {
+        console.error("Error fetching history", err);
+        showToast("Failed to load question version history", "error");
+      } finally {
+        setLoadingHistory(false);
+      }
+    } else {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleOpenEditQuestion = (item) => {
+    let targetId = typeof item.id === 'number' ? item.id : null;
+    if (!targetId && quizItemsList && quizItemsList.length > 0) {
+      const match = quizItemsList.find(x => x.item_index === item.item_index || x.question_text === item.question_text);
+      if (match) targetId = match.id;
+    }
+    const opts = item.options || { A: '', B: '', C: '', D: '' };
+    setEditingQuestion({ ...item, id: targetId || item.id });
+    setQuestionFormData({
+      question_text: item.question_text || item.question || '',
+      options: {
+        A: opts.A || '',
+        B: opts.B || '',
+        C: opts.C || '',
+        D: opts.D || ''
+      },
+      correct_option_id: (item.correct_option_id || item.correct_option || 'A').toUpperCase(),
+      rationale: item.rationale || item._rationale || '',
+      difficulty_tier: item.difficulty_tier || 'Medium',
+      bloom_level: item.bloom_level || 'Understand',
+      edit_reason: ''
+    });
+    setShowEditQuestionModal(true);
+  };
+
+  const handleSaveQuestionEdit = async () => {
+    if (!editingQuestion || !currentActiveAsset) return;
+    let targetId = typeof editingQuestion.id === 'number' ? editingQuestion.id : null;
+    if (!targetId && quizItemsList && quizItemsList.length > 0) {
+      const match = quizItemsList.find(x => x.item_index === editingQuestion.item_index);
+      if (match) targetId = match.id;
+    }
+
+    if (!targetId) {
+      const list = await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+      const match = (list || []).find(x => x.item_index === editingQuestion.item_index);
+      if (match) targetId = match.id;
+    }
+
+    if (!targetId) {
+      showToast("Unable to identify question item in database.", "error");
+      return;
+    }
+
+    setSavingQuestionEdit(true);
+    try {
+      const res = await fetch(`/api/teacher/quiz-items/${targetId}/edit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(questionFormData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        showToast(data.message || `Saved Question changes as Version ${data.version_no}!`, "success");
+        setShowEditQuestionModal(false);
+        await fetchUnitDetails(currentUnitId);
+        if (currentActiveAsset) {
+          await fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+        }
+      } else {
+        const errData = await safeApiResponse(res);
+        showToast(errData.detail || "Failed to save question edit", "error");
+      }
+    } catch (err) {
+      showToast(err.message || "Error saving question", "error");
+    } finally {
+      setSavingQuestionEdit(false);
+    }
+  };
+
+
+  const handleExecuteSelectiveRegeneration = async () => {
+    if (!currentActiveAsset || selectedQuizItemIds.length === 0) return;
+    setRegeneratingQuizItems(true);
+    try {
+      const activeAssetId = currentActiveAsset.asset_id || currentActiveAsset.id;
+      const res = await fetch('/api/teacher/quiz-items/regenerate-selected', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          asset_id: activeAssetId,
+          item_ids: selectedQuizItemIds,
+          selected_item_ids: selectedQuizItemIds,
+          regen_reason_category: regenReasonCategory || 'Other',
+          regen_reason_comment: (regenReasonComment || '').trim()
+        })
+      });
+      const data = await safeApiResponse(res, "Regeneration failed");
+      if (!res.ok) {
+        const errorDetail = typeof data === 'object' ? (data.detail || data.message || "Regeneration failed") : data;
+        const msg = typeof errorDetail === 'string' ? errorDetail : Array.isArray(errorDetail) ? errorDetail.map(d => d.msg || JSON.stringify(d)).join(', ') : JSON.stringify(errorDetail);
+        throw new Error(msg);
+      }
+
+      showToast(`Selectively regenerated ${data.regenerated_count || selectedQuizItemIds.length} question(s) into new Draft version!`, "success");
+      setShowRegenModal(false);
+      setRegenReasonComment('');
+      setSelectedQuizItemIds([]);
+      await fetchUnitDetails(currentUnitId);
+      if (activeAssetId) {
+        await fetchQuizItems(activeAssetId);
+      }
+    } catch (err) {
+      const displayMsg = typeof err === 'string' ? err : err.message || "Regeneration failed";
+      showToast(displayMsg, "error");
+    } finally {
+      setRegeneratingQuizItems(false);
     }
   };
 
@@ -440,6 +702,16 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   };
 
   const currentActiveAsset = getActiveAsset();
+
+  useEffect(() => {
+    if (currentActiveAsset && currentActiveAsset.type === 'quiz') {
+      fetchQuizItems(currentActiveAsset.asset_id || currentActiveAsset.id);
+      setSelectedQuizItemIds([]);
+    } else {
+      setQuizItemsList([]);
+      setSelectedQuizItemIds([]);
+    }
+  }, [currentActiveAsset?.asset_id, currentActiveAsset?.type, currentActiveAsset?.latest_version?.version_no, selectedReviewObjectiveId, activeAssetTab]);
 
   return (
     <div className="space-y-8 pb-20 animate-in fade-in">
@@ -1304,6 +1576,20 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           accent={true}
                           action={
                             <div className="flex items-center gap-2">
+                              {currentActiveAsset.type === 'quiz' && (
+                                <button
+                                  onClick={() => {
+                                    if (quizItemsList && quizItemsList.length > 0) {
+                                      handleOpenItemHistory(quizItemsList[0]);
+                                    } else if (content.questions && content.questions.length > 0) {
+                                      handleOpenItemHistory({ item_index: 0, question_text: content.questions[0].question || content.questions[0].question_text });
+                                    }
+                                  }}
+                                  className="px-3 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-neon-orange" /> Quiz History
+                                </button>
+                              )}
                               <Badge variant={ver.status === 'approved' ? 'approved' : 'warning'}>
                                 {ver.status === 'approved' ? 'APPROVED' : 'DRAFT'}
                               </Badge>
@@ -1410,114 +1696,267 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 )}
 
                                 {/* 3. Formative Quiz View */}
-                                {currentActiveAsset.type === 'quiz' && (
-                                  <div className="space-y-4">
-                                    {/* Quiz Controls Bar */}
-                                    <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800/90 flex flex-wrap items-center justify-between gap-3">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-mono text-slate-300">
-                                          Collective Assessment: <strong className="text-neon-amber font-mono">{content.questions?.length || 0} Questions</strong>
-                                        </span>
-                                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-dark-900 border border-slate-700 text-slate-400">
-                                          Progressive Tiers ({quizDifficultyToGenerate === 'Easy' ? 'Easy' : quizDifficultyToGenerate === 'Medium' ? 'Easy + Medium' : 'Easy + Medium + Hard'})
-                                        </span>
-                                      </div>
+                                {currentActiveAsset.type === 'quiz' && (() => {
+                                  const displayItems = (quizItemsList && quizItemsList.length > 0)
+                                    ? quizItemsList
+                                    : (content.questions || []).map((q, qIdx) => ({
+                                        id: q.id || `synth-${qIdx}`,
+                                        item_index: qIdx,
+                                        question_text: q.question_text || q.question || '',
+                                        options: q.options || {},
+                                        correct_option_id: q.correct_option_id || 'A',
+                                        bloom_level: q.bloom_level || 'Understand',
+                                        difficulty_tier: q.difficulty_tier || 'Medium',
+                                        status: 'draft',
+                                        current_version_no: 1,
+                                        version_count: 1
+                                      }));
 
-                                      <div className="flex flex-wrap items-center gap-2.5">
-                                        <div className="flex items-center gap-1.5">
-                                          <label className="text-[11px] text-slate-400 font-medium">Difficulty:</label>
-                                          <select
-                                            value={quizDifficultyToGenerate}
-                                            onChange={(e) => setQuizDifficultyToGenerate(e.target.value)}
-                                            className="rounded-lg glass-input py-1 px-2.5 text-xs font-mono font-bold text-neon-amber bg-dark-900 border border-slate-700"
-                                          >
-                                            <option value="Easy">Easy (Recall & Fundamentals)</option>
-                                            <option value="Medium">Medium (Easy + Medium)</option>
-                                            <option value="Hard">Hard (Easy + Medium + Hard)</option>
-                                          </select>
-                                        </div>
+                                  const allSelected = displayItems.length > 0 && selectedQuizItemIds.length === displayItems.length;
+                                  const approvedSelectedCount = displayItems.filter(it => selectedQuizItemIds.includes(it.id) && it.status === 'approved').length;
 
-                                        <div className="flex items-center gap-1.5">
-                                          <label className="text-[11px] text-slate-400 font-medium">Count:</label>
-                                          <select
-                                            value={quizCountToGenerate}
-                                            onChange={(e) => setQuizCountToGenerate(Number(e.target.value))}
-                                            className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-neon-orange bg-dark-900 border border-slate-700"
-                                          >
-                                            {[1, 2, 3, 4, 5, 6, 7, 8, 10].map(n => (
-                                              <option key={n} value={n}>{n} Qs</option>
-                                            ))}
-                                          </select>
-                                        </div>
+                                  const handleToggleAll = () => {
+                                    if (allSelected) {
+                                      setSelectedQuizItemIds([]);
+                                    } else {
+                                      setSelectedQuizItemIds(displayItems.map(it => it.id));
+                                    }
+                                  };
 
-                                        <button
-                                          onClick={() => handleSingleItemRegenerate('quiz', currentActiveAsset.objective_id, quizCountToGenerate, quizDifficultyToGenerate)}
-                                          disabled={generating}
-                                          className="btn-royal text-xs py-1 px-3.5 flex items-center gap-1.5 shadow-neon-sm"
-                                        >
-                                          <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
-                                          Regenerate Quiz ({quizDifficultyToGenerate} - {quizCountToGenerate} Qs)
-                                        </button>
-                                      </div>
-                                    </div>
+                                  const handleToggleOne = (id) => {
+                                    setSelectedQuizItemIds(prev => 
+                                      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+                                    );
+                                  };
 
-                                    {content.questions && content.questions.length > 0 ? (
-                                      <div className="space-y-3">
-                                        {content.questions.map((q, qIdx) => {
-                                          const tier = q.difficulty_tier || (qIdx === 0 ? 'Easy' : (qIdx === 1 ? 'Medium' : 'Advanced'));
-                                          return (
-                                            <div key={qIdx} className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-3">
-                                              <div className="flex items-start justify-between gap-2">
-                                                <div className="flex items-start gap-2">
-                                                  <span className="font-mono text-xs font-bold text-neon-orange">
-                                                    Q{qIdx + 1}.
-                                                  </span>
-                                                  <span className="text-xs font-bold text-white leading-relaxed">
-                                                    {q.question_text || q.question}
-                                                  </span>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                  {tier.toLowerCase() === 'easy' && (
-                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 inline-flex items-center gap-1">
-                                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                                                      Easy
-                                                    </span>
-                                                  )}
-                                                  {tier.toLowerCase() === 'medium' && (
-                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-500/40 inline-flex items-center gap-1">
-                                                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                                      Medium
-                                                    </span>
-                                                  )}
-                                                  {tier.toLowerCase() === 'advanced' && (
-                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1">
-                                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-                                                      Hard
-                                                    </span>
-                                                  )}
-                                                  <Badge variant="royal">{q.bloom_level || 'Understand'}</Badge>
-                                                </div>
-                                              </div>
-                                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                                                {q.options && Object.entries(q.options).map(([optKey, optVal]) => (
-                                                  <div
-                                                    key={optKey}
-                                                    className="p-2.5 rounded-lg border bg-dark-900 border-slate-800 text-slate-300 flex items-center gap-2"
+                                  return (
+                                    <div className="space-y-4">
+                                      {/* Batch Action Toolbar & Secondary Controls */}
+                                      <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800/90 space-y-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                          {/* Selection Status & Batch Button */}
+                                          <div className="flex items-center gap-3">
+                                            <label className="flex items-center gap-2 cursor-pointer bg-dark-900 border border-slate-700/80 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-200 hover:border-slate-500 transition">
+                                              <input
+                                                type="checkbox"
+                                                checked={allSelected}
+                                                onChange={handleToggleAll}
+                                                className="rounded text-neon-orange focus:ring-0 cursor-pointer"
+                                              />
+                                              <span>Select All ({displayItems.length})</span>
+                                            </label>
+
+                                            <span className="text-xs font-mono text-slate-400">
+                                              <strong className="text-neon-amber font-mono">{selectedQuizItemIds.length}</strong> of {displayItems.length} selected
+                                            </span>
+
+                                            <button
+                                              onClick={() => setShowRegenModal(true)}
+                                              disabled={selectedQuizItemIds.length === 0 || regeneratingQuizItems}
+                                              className="px-3.5 py-1.5 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold flex items-center gap-1.5 shadow-neon-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                            >
+                                              <Sparkles className="w-3.5 h-3.5" />
+                                              Regenerate Selected ({selectedQuizItemIds.length})
+                                            </button>
+                                          </div>
+
+                                          {/* Full Asset Regenerate Controls */}
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            {currentActiveAsset.type === 'quiz' && (
+                                              <>
+                                                <div className="flex items-center gap-1.5">
+                                                  <label className="text-[11px] text-slate-400 font-medium">Tier:</label>
+                                                  <select
+                                                    value={quizDifficultyToGenerate}
+                                                    onChange={(e) => setQuizDifficultyToGenerate(e.target.value)}
+                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-neon-amber bg-dark-900 border border-slate-700"
                                                   >
-                                                    <span className="font-mono text-xs font-bold uppercase text-neon-orange">{optKey})</span>
-                                                    <span>{optVal}</span>
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
+                                                    <option value="Easy">Easy</option>
+                                                    <option value="Medium">Medium</option>
+                                                    <option value="Hard">Hard</option>
+                                                  </select>
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5">
+                                                  <label className="text-[11px] text-slate-400 font-medium">Count:</label>
+                                                  <select
+                                                    value={quizCountToGenerate}
+                                                    onChange={(e) => setQuizCountToGenerate(Number(e.target.value))}
+                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-neon-orange bg-dark-900 border border-slate-700"
+                                                  >
+                                                    {[1, 2, 3, 4, 5, 6, 7, 8, 10].map(n => (
+                                                      <option key={n} value={n}>{n} Qs</option>
+                                                    ))}
+                                                  </select>
+                                                </div>
+                                              </>
+                                            )}
+
+                                            <button
+                                              onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id, currentActiveAsset.type === 'quiz' ? quizCountToGenerate : null, currentActiveAsset.type === 'quiz' ? quizDifficultyToGenerate : null)}
+                                              disabled={generating}
+                                              className="px-3 py-1.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 text-xs font-semibold border border-slate-700 flex items-center gap-1.5"
+                                            >
+                                              <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin text-neon-orange' : ''}`} />
+                                              Regen Entire Set
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* Warning Banner if Approved items are selected */}
+                                        {approvedSelectedCount > 0 && (
+                                          <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/40 text-xs text-amber-200 flex items-center gap-2">
+                                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                            <span>
+                                              <strong>Caution:</strong> {approvedSelectedCount} of the selected questions are already marked as Approved. Regenerating will create new draft versions (v+1) requiring re-approval.
+                                            </span>
+                                          </div>
+                                        )}
                                       </div>
-                                    ) : (
-                                      <p className="text-xs text-slate-400 italic">No questions generated yet.</p>
-                                    )}
-                                  </div>
-                                )}
+
+                                      {/* Per-Question Interactive Cards */}
+                                      {loadingQuizItems ? (
+                                        <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                                          <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
+                                          Loading question versions...
+                                        </div>
+                                      ) : displayItems.length > 0 ? (
+                                        <div className="space-y-3">
+                                          {displayItems.map((q, qIdx) => {
+                                            const isChecked = selectedQuizItemIds.includes(q.id);
+                                            const tier = q.difficulty_tier || (qIdx === 0 ? 'Easy' : (qIdx === 1 ? 'Medium' : 'Advanced'));
+                                            const isApproved = q.status === 'approved';
+                                            const isNeedsRev = q.status === 'needs_revision';
+
+                                            return (
+                                              <div 
+                                                key={q.id || qIdx} 
+                                                className={`p-4 rounded-xl transition-all border space-y-3 ${
+                                                  isChecked 
+                                                    ? 'bg-dark-900/95 border-neon-orange/60 shadow-neon-sm' 
+                                                    : 'bg-dark-950 border-slate-800 hover:border-slate-700'
+                                                }`}
+                                              >
+                                                {/* Question Header & Action Bar */}
+                                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                                                  <div className="flex items-start gap-3">
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isChecked}
+                                                      onChange={() => handleToggleOne(q.id)}
+                                                      className="mt-1 rounded text-neon-orange focus:ring-0 cursor-pointer w-4 h-4"
+                                                    />
+                                                    <div>
+                                                      <span className="font-mono text-xs font-bold text-neon-orange mr-2">
+                                                        Q{qIdx + 1}.
+                                                      </span>
+                                                      <span className="text-xs font-bold text-white leading-relaxed font-sans">
+                                                        {q.question_text}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+
+                                                  <div className="flex flex-wrap items-center gap-1.5 shrink-0 pl-7 sm:pl-0">
+                                                    {/* Tier Badge */}
+                                                    {tier.toLowerCase() === 'easy' && (
+                                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 inline-flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                                        Easy
+                                                      </span>
+                                                    )}
+                                                    {tier.toLowerCase() === 'medium' && (
+                                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-950/80 text-blue-300 border border-blue-500/40 inline-flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                                        Medium
+                                                      </span>
+                                                    )}
+                                                    {(tier.toLowerCase() === 'advanced' || tier.toLowerCase() === 'hard') && (
+                                                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950/80 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                                                        Hard
+                                                      </span>
+                                                    )}
+
+                                                    <Badge variant="royal">{q.bloom_level || 'Understand'}</Badge>
+
+                                                    {/* Version Badge */}
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-neon-orange">
+                                                      v{q.current_version_no || 1}
+                                                    </span>
+
+                                                    {/* Item Action Buttons */}
+                                                    <button
+                                                      onClick={() => handleToggleItemStatus(q)}
+                                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                                                        isApproved 
+                                                          ? 'bg-dark-850 hover:bg-dark-800 text-slate-300 border border-slate-700' 
+                                                          : 'bg-emerald-950/80 hover:bg-emerald-800 text-emerald-300 border border-emerald-500/40'
+                                                      }`}
+                                                    >
+                                                      {isApproved ? (
+                                                        'Mark Draft'
+                                                      ) : (
+                                                        <>
+                                                          <Check className="w-3 h-3 text-emerald-400" /> Approve
+                                                        </>
+                                                      )}
+                                                    </button>
+
+                                                    <button
+                                                      onClick={() => handleOpenEditQuestion(q)}
+                                                      className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-semibold flex items-center gap-1 transition-all"
+                                                    >
+                                                      <Edit3 className="w-3 h-3 text-neon-orange" /> Edit
+                                                    </button>
+
+                                                    <button
+                                                      onClick={() => handleOpenItemHistory(q)}
+                                                      className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-mono flex items-center gap-1 transition-all"
+                                                    >
+                                                      <Clock className="w-3 h-3 text-neon-orange" />
+                                                      History ({q.version_count || q.versions_count || q.current_version_no || 1})
+                                                    </button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Options Grid with Correct Answer Highlight */}
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1 pl-7">
+                                                  {q.options && Object.entries(q.options).map(([optKey, optVal]) => {
+                                                    const isCorrect = optKey.toUpperCase() === (q.correct_option_id || '').toUpperCase();
+                                                    return (
+                                                      <div
+                                                        key={optKey}
+                                                        className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-2 transition ${
+                                                          isCorrect
+                                                            ? 'bg-emerald-950/30 border-emerald-500/50 text-emerald-200'
+                                                            : 'bg-dark-900 border-slate-800 text-slate-300'
+                                                        }`}
+                                                      >
+                                                        <div className="flex items-center gap-2">
+                                                          <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                                                            {optKey})
+                                                          </span>
+                                                          <span>{optVal}</span>
+                                                        </div>
+                                                        {isCorrect && (
+                                                          <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0 flex items-center gap-1">
+                                                            <Check className="w-3 h-3" /> Key
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-slate-400 italic">No questions generated yet.</p>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 {/* 4. Answer Key (Separate Asset) View */}
                                 {currentActiveAsset.type === 'answer_key' && (
@@ -1736,6 +2175,505 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             )}
           </div>
         </GlassCard>
+      )}
+
+      {/* SELECTIVE QUESTION REGENERATION MODAL */}
+      {showRegenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-lg rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Selective Question Regeneration</h3>
+                  <p className="text-[11px] font-mono text-slate-400">
+                    Regenerating {selectedQuizItemIds.length} selected question(s) with AI grounding
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRegenModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Category Reason Chips */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
+                  Regeneration Reason Category <span className="text-rose-400">*</span>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    'Duplicate',
+                    'Too easy/hard',
+                    'Ambiguous wording',
+                    'Factually incorrect',
+                    'Answer leakage',
+                    'Other'
+                  ].map((cat) => {
+                    const isSelected = regenReasonCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setRegenReasonCategory(cat)}
+                        className={`p-2 rounded-xl text-xs font-medium border text-center transition-all ${
+                          isSelected
+                            ? 'bg-neon-orange text-white border-neon-orange font-bold shadow-neon-sm'
+                            : 'bg-dark-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Specific Comments Textarea */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span>Teacher Guidance & Improvement Instructions</span>
+                  <span className="text-[10px] font-mono text-slate-400 font-normal">Optional</span>
+                </label>
+                <textarea
+                  value={regenReasonComment}
+                  onChange={(e) => setRegenReasonComment(e.target.value)}
+                  placeholder="Optional: Explain what needs to be fixed (e.g. 'Option C is ambiguous with Option A', 'Ensure distractor tests misconceptions without giving away the solution')..."
+                  rows={4}
+                  className="w-full rounded-xl glass-input p-3 text-xs resize-none leading-relaxed text-slate-100"
+                />
+              </div>
+
+              {/* Guardrails Info Callout */}
+              <div className="p-3 rounded-xl bg-dark-950 border border-slate-800/90 text-[11px] text-slate-300 space-y-1">
+                <div className="font-bold text-neon-amber font-mono flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Grounding & Non-Duplication Contract
+                </div>
+                <p className="text-slate-400">
+                  The replacement question will be grounded strictly in authoritative source chunks and guaranteed not to duplicate existing questions in this set.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowRegenModal(false)}
+                  disabled={regeneratingQuizItems}
+                  className="px-4 py-2 rounded-xl text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteSelectiveRegeneration}
+                  disabled={regeneratingQuizItems}
+                  className="btn-royal text-xs py-2 px-5 flex items-center gap-2 shadow-neon disabled:opacity-50"
+                >
+                  {regeneratingQuizItems ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Regenerating {selectedQuizItemIds.length} Question(s)...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Confirm & Regenerate ({selectedQuizItemIds.length})
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUESTION VERSION HISTORY MODAL */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-dark-950/90 backdrop-blur z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Question #{historyItem ? historyItem.item_index + 1 : ''} Version History
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-400">
+                    Full audit trail of all previous revisions, teacher reasons & changes
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowHistoryModal(false);
+                  setHistoryData(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingHistory ? (
+              <div className="py-16 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
+                Loading version history timeline...
+              </div>
+            ) : historyData && historyData.history && historyData.history.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
+                  <span>Total Iterations: <strong className="text-neon-amber font-mono">{historyData.history.length}</strong></span>
+                  <span className="font-mono text-[10px] text-neon-orange">Current Status: {historyData.current_status?.toUpperCase()}</span>
+                </div>
+
+                <div className="space-y-4">
+                  {historyData.history.map((ver, vIdx) => {
+                    const isLatest = vIdx === 0;
+                    return (
+                      <div
+                        key={ver.version_no}
+                        className={`p-4 rounded-2xl border space-y-3 transition ${
+                          isLatest 
+                            ? 'bg-dark-900/90 border-neon-orange/50 shadow-neon-sm' 
+                            : 'bg-dark-950/80 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {/* Version Header */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold ${
+                              isLatest 
+                                ? 'bg-neon-orange text-white' 
+                                : 'bg-dark-800 text-slate-400 border border-slate-700'
+                            }`}>
+                              Version {ver.version_no} {isLatest && '(Current)'}
+                            </span>
+                            {ver.regen_reason_category && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
+                                {ver.regen_reason_category}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
+                            <span>By: <strong className="text-slate-200">{ver.triggered_by_name || 'Teacher'}</strong></span>
+                            <span>·</span>
+                            <span>{new Date(ver.created_at).toLocaleString()}</span>
+                          </div>
+                        </div>
+
+                        {/* Regeneration Reason Callout */}
+                        {ver.regen_reason && (
+                          <div className="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs text-slate-300">
+                            <strong className="text-neon-orange font-mono text-[11px] block">Teacher Revision Prompt:</strong>
+                            <p className="italic text-slate-200 mt-0.5">"{ver.regen_reason}"</p>
+                          </div>
+                        )}
+
+                        {/* Question Text */}
+                        <div className="text-xs font-bold text-white leading-relaxed">
+                          {ver.question_text}
+                        </div>
+
+                        {/* Options */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                          {ver.options && Object.entries(ver.options).map(([optKey, optVal]) => {
+                            const isCorrect = optKey.toUpperCase() === (ver.correct_option_id || '').toUpperCase();
+                            return (
+                              <div
+                                key={optKey}
+                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1.5 ${
+                                  isCorrect 
+                                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' 
+                                    : 'bg-dark-900 border-slate-800 text-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                                    {optKey})
+                                  </span>
+                                  <span>{optVal}</span>
+                                </div>
+                                {isCorrect && (
+                                  <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0">
+                                    ✓ Key
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : historyItem ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
+                  <span>Total Iterations: <strong className="text-neon-amber font-mono">1</strong></span>
+                  <span className="font-mono text-[10px] text-neon-orange">Current Status: {(historyItem.status || 'draft').toUpperCase()}</span>
+                </div>
+                <div className="p-4 rounded-2xl border bg-dark-900/90 border-neon-orange/50 shadow-neon-sm space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full font-mono text-xs font-bold bg-neon-orange text-white">
+                        Version {historyItem.current_version_no || 1} (Current)
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
+                        Initial Generation
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs font-bold text-white leading-relaxed">
+                    {historyItem.question_text || historyItem.question}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                    {historyItem.options && Object.entries(historyItem.options).map(([optKey, optVal]) => {
+                      const isCorrect = optKey.toUpperCase() === (historyItem.correct_option_id || historyItem.correct_option || 'A').toUpperCase();
+                      return (
+                        <div
+                          key={optKey}
+                          className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1.5 ${
+                            isCorrect 
+                              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' 
+                              : 'bg-dark-900 border-slate-800 text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                              {optKey})
+                            </span>
+                            <span>{optVal}</span>
+                          </div>
+                          {isCorrect && (
+                            <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0">
+                              ✓ Key
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center text-xs text-slate-400">
+                No past versions recorded for this question item.
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHistoryModal(false);
+                  setHistoryData(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 transition"
+              >
+                Close History
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      
+      {/* QUESTION MANUAL EDIT MODAL */}
+      {showEditQuestionModal && editingQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-dark-950/90 backdrop-blur z-10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                  <Edit3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Edit Question #{editingQuestion.item_index + 1}
+                  </h3>
+                  <p className="text-[11px] font-mono text-slate-400">
+                    Modifications will be automatically recorded as a new version (v{(editingQuestion.current_version_no || 1) + 1}) in history
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEditQuestionModal(false);
+                  setEditingQuestion(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Question Text */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1.5">
+                  Question Text / Stem <span className="text-rose-400">*</span>
+                </label>
+                <textarea
+                  value={questionFormData.question_text}
+                  onChange={(e) => setQuestionFormData({ ...questionFormData, question_text: e.target.value })}
+                  rows={3}
+                  className="w-full rounded-xl glass-input p-3 text-xs leading-relaxed"
+                  placeholder="Enter the question text..."
+                />
+              </div>
+
+              {/* Options */}
+              <div className="space-y-2.5">
+                <label className="block text-xs font-semibold text-slate-200">
+                  Multiple Choice Options <span className="text-rose-400">*</span>
+                </label>
+                {['A', 'B', 'C', 'D'].map((optKey) => {
+                  const isKey = questionFormData.correct_option_id === optKey;
+                  return (
+                    <div key={optKey} className="flex items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setQuestionFormData({ ...questionFormData, correct_option_id: optKey })}
+                        className={`w-8 h-8 rounded-lg font-mono font-bold text-xs flex items-center justify-center transition shrink-0 ${
+                          isKey 
+                            ? 'bg-emerald-500 text-white shadow-emerald-900 shadow-md ring-2 ring-emerald-400/50' 
+                            : 'bg-dark-900 border border-slate-700 text-slate-300 hover:border-slate-500'
+                        }`}
+                        title={isKey ? "Correct Answer Key" : "Click to set as Correct Answer"}
+                      >
+                        {optKey}
+                      </button>
+                      <input
+                        type="text"
+                        value={questionFormData.options[optKey] || ''}
+                        onChange={(e) => setQuestionFormData({
+                          ...questionFormData,
+                          options: {
+                            ...questionFormData.options,
+                            [optKey]: e.target.value
+                          }
+                        })}
+                        placeholder={`Option ${optKey} text...`}
+                        className={`flex-1 rounded-xl glass-input p-2.5 text-xs ${
+                          isKey ? 'border-emerald-500/50 bg-emerald-950/20' : ''
+                        }`}
+                      />
+                      {isKey && (
+                        <span className="text-[11px] font-mono font-bold text-emerald-400 shrink-0">
+                          ✓ Correct Key
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Tier & Bloom */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Difficulty Tier
+                  </label>
+                  <select
+                    value={questionFormData.difficulty_tier}
+                    onChange={(e) => setQuestionFormData({ ...questionFormData, difficulty_tier: e.target.value })}
+                    className="w-full rounded-xl glass-input p-2.5 text-xs font-mono"
+                  >
+                    <option value="Easy">Easy</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Hard">Hard</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Bloom's Taxonomy Level
+                  </label>
+                  <select
+                    value={questionFormData.bloom_level}
+                    onChange={(e) => setQuestionFormData({ ...questionFormData, bloom_level: e.target.value })}
+                    className="w-full rounded-xl glass-input p-2.5 text-xs font-mono"
+                  >
+                    <option value="Remember">Remember</option>
+                    <option value="Understand">Understand</option>
+                    <option value="Apply">Apply</option>
+                    <option value="Analyze">Analyze</option>
+                    <option value="Evaluate">Evaluate</option>
+                    <option value="Create">Create</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Explanation / Answer Rationale (Optional)
+                </label>
+                <textarea
+                  value={questionFormData.rationale}
+                  onChange={(e) => setQuestionFormData({ ...questionFormData, rationale: e.target.value })}
+                  rows={2}
+                  className="w-full rounded-xl glass-input p-2.5 text-xs"
+                  placeholder="Explain why the correct answer is right..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Teacher Revision Note / Reason (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={questionFormData.edit_reason}
+                  onChange={(e) => setQuestionFormData({ ...questionFormData, edit_reason: e.target.value })}
+                  placeholder="e.g., Fixed wording of option C and updated key to B"
+                  className="w-full rounded-xl glass-input p-2.5 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditQuestionModal(false);
+                  setEditingQuestion(null);
+                }}
+                disabled={savingQuestionEdit}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-dark-800 hover:bg-dark-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuestionEdit}
+                disabled={savingQuestionEdit || !questionFormData.question_text.trim()}
+                className="btn-royal text-xs py-2 px-5 flex items-center gap-1.5 shadow-neon"
+              >
+                {savingQuestionEdit ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    Saving Changes...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    Save & Store Version
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ASSIGN TO CLASSROOM MODAL */}

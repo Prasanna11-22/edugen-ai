@@ -1,15 +1,22 @@
 import json
+import random
 from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import (
     User, Classroom, Enrollment, Unit, Asset, AssetVersion,
-    Assignment, Submission, Objective
+    Assignment, Submission, Objective, Source, SourceVersion, Chunk, Glossary,
+    StudentRequest, RequestResponse
 )
-from ..schemas import JoinClassroomRequest, SubmitAssessmentRequest
-from ..auth import student_required
+from ..schemas import (
+    JoinClassroomRequest, SubmitAssessmentRequest, SelfPacedTestGenerateRequest,
+    StudentRequestCreate
+)
+from ..auth import student_required, student_required_flexible
 from ..services.pdf_exporter import generate_learning_pack_pdf
+from ..services.rag_engine import generate_formative_quiz
 
 router = APIRouter(prefix="/api/student", tags=["Student Portal"])
 
@@ -54,6 +61,8 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
     """
     CRITICAL SECURITY CHECK (§3.3 & §8):
     Student can ONLY access approved content assigned to their enrolled classroom.
+    The study pack contains explanation, worked examples, revision rules, and glossary.
+    Assigned test questions are excluded from the pack and served via Formative Assessments.
     """
     # Verify enrollment
     enrollment = db.query(Enrollment).filter(
@@ -85,7 +94,7 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
     if assigned_unit_ids:
         units = db.query(Unit).filter(Unit.id.in_(list(assigned_unit_ids))).all()
         for u in units:
-            # Query all approved assets for this unit
+            # Query approved study pack assets for this unit (explanation, example, revision_sheet)
             exp_ver = db.query(AssetVersion).join(Asset).filter(
                 Asset.unit_id == u.id,
                 Asset.type == "explanation",
@@ -104,32 +113,25 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
                 AssetVersion.status == "approved"
             ).order_by(AssetVersion.version_no.desc()).first()
 
-            quiz_ver = db.query(AssetVersion).join(Asset).filter(
-                Asset.unit_id == u.id,
-                Asset.type == "quiz",
-                AssetVersion.status == "approved"
-            ).order_by(AssetVersion.version_no.desc()).first()
-
-            all_vers = [v for v in [exp_ver, ex_ver, rev_ver, quiz_ver] if v]
+            all_vers = [v for v in [exp_ver, ex_ver, rev_ver] if v]
             if not all_vers:
                 continue
 
             exp_json = json.loads(exp_ver.content_json) if exp_ver else {}
             ex_json = json.loads(ex_ver.content_json) if ex_ver else {}
             rev_json = json.loads(rev_ver.content_json) if rev_ver else {}
-            quiz_json = json.loads(quiz_ver.content_json) if quiz_ver else {}
 
             glossary_list = [{"id": g.id, "term": g.term, "canonical_wording": g.canonical_wording} for g in u.glossary_terms]
             objectives_list = [{"id": o.id, "text": o.text} for o in u.objectives]
 
             # Collect citations
             all_citations = []
-            for j in [exp_json, ex_json, rev_json, quiz_json]:
+            for j in [exp_json, ex_json, rev_json]:
                 if "chunk_citations" in j and isinstance(j["chunk_citations"], list):
                     all_citations.extend(j["chunk_citations"])
             all_citations = list(dict.fromkeys(all_citations))
 
-            # Build Full Consolidated Content
+            # Build Full Consolidated Study Pack Content (No test questions leaked into pack)
             full_content = {
                 "title": f"Complete Study Pack: {u.title}",
                 "unit_title": u.title,
@@ -142,13 +144,12 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
                 "method_explanation": ex_json.get("method_explanation", ""),
                 "key_takeaways": rev_json.get("key_takeaways", []),
                 "rapid_memory_triggers": rev_json.get("rapid_memory_triggers", rev_json.get("quick_recall_bullets", [])),
-                "questions": quiz_json.get("questions", []),
+                "questions": [], # Test questions are in Formative Assessments
                 "glossary": glossary_list,
                 "chunk_citations": all_citations,
                 "explanation_pack": exp_json if exp_ver else None,
                 "example_pack": ex_json if ex_ver else None,
                 "revision_pack": rev_json if rev_ver else None,
-                "quiz_pack": quiz_json if quiz_ver else None,
             }
 
             max_ver_no = max([v.version_no for v in all_vers])
@@ -171,7 +172,6 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
                     "has_explanation": exp_ver is not None,
                     "has_example": ex_ver is not None,
                     "has_revision": rev_ver is not None,
-                    "has_quiz": quiz_ver is not None,
                     "has_glossary": len(glossary_list) > 0
                 }
             })
@@ -186,6 +186,10 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
     ).first()
     if not enrollment:
         raise HTTPException(status_code=403, detail="You are not enrolled in this classroom.")
+        
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found.")
         
     assignments = db.query(Assignment).filter(
         Assignment.classroom_id == classroom_id,
@@ -242,7 +246,7 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
                 "asset_type": asset.type,
                 "tier_label": tier_label,
                 "objective_title": obj.text if obj else "General Concept",
-                "question": q.get("question"),
+                "question": q.get("question") or q.get("question_text", f"Assessment Question {idx+1}"),
                 "options": q.get("options", {}),
                 "bloom_level": q.get("bloom_level")
             })
@@ -260,8 +264,9 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
         ).order_by(Submission.submitted_at.desc()).all()
         
         attempts_used = len(submissions)
-        max_attempts = primary_assign.max_attempts or 1
-        can_attempt = attempts_used < max_attempts
+        max_attempts = primary_assign.max_attempts if primary_assign.max_attempts is not None else 1
+        attempts_remaining = max(0, max_attempts - attempts_used)
+        can_attempt = (max_attempts > 0) and (attempts_remaining > 0)
         latest_sub = submissions[0] if submissions else None
         
         res.append({
@@ -269,7 +274,7 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
             "unit_id": unit.id,
             "unit_title": unit.title,
             "asset_type": "unit_assessment_set",
-            "title": f"Complete Formative Assessment: {unit.title}",
+            "title": f"Assigned Test: {unit.title}",
             "classroom_id": classroom.id,
             "classroom_name": classroom.name,
             "subject": classroom.subject,
@@ -278,6 +283,7 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
             "max_attempts": max_attempts,
             "time_limit_minutes": primary_assign.time_limit_minutes or 15,
             "attempts_used": attempts_used,
+            "attempts_remaining": attempts_remaining,
             "can_attempt": can_attempt,
             "questions": udata["questions"],
             "total_questions": len(udata["questions"]),
@@ -289,6 +295,180 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
         })
         
     return res
+
+# ----------------------------------------------------------------------
+# AI-POWERED SELF-PACED PRACTICE GENERATOR (GEMINI AI)
+# ----------------------------------------------------------------------
+@router.get("/self-paced/topics")
+def get_self_paced_topics(db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+    """Returns available topics from all approved packs in enrolled classrooms."""
+    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id).all()
+    classroom_ids = [e.classroom_id for e in enrollments]
+    if not classroom_ids:
+        return []
+    
+    assignments = db.query(Assignment).filter(
+        Assignment.classroom_id.in_(classroom_ids),
+        Assignment.status == "active"
+    ).all()
+    
+    unit_ids = set()
+    for a in assignments:
+        ver = db.query(AssetVersion).filter(AssetVersion.id == a.asset_version_id).first()
+        if ver:
+            asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
+            if asset:
+                unit_ids.add(asset.unit_id)
+                
+    units = db.query(Unit).filter(Unit.id.in_(list(unit_ids))).all()
+    
+    topics = []
+    for u in units:
+        objs = db.query(Objective).filter(Objective.unit_id == u.id).all()
+        classrooms = db.query(Classroom).filter(Classroom.id.in_(classroom_ids)).all()
+        c_names = [c.name for c in classrooms]
+        subjects = list(set([c.subject for c in classrooms if c.subject]))
+        
+        topics.append({
+            "unit_id": u.id,
+            "title": u.title,
+            "topic": u.title,
+            "subject": subjects[0] if subjects else "General",
+            "objectives": [{"id": o.id, "text": o.text, "bloom_level": o.bloom_level} for o in objs],
+            "classrooms": c_names
+        })
+    return topics
+
+@router.post("/self-paced/generate")
+def generate_self_paced_test(
+    data: SelfPacedTestGenerateRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    """
+    Generates dynamic on-demand self-paced practice questions using Gemini AI
+    strictly grounded in the selected assigned pack topic's source material.
+    """
+    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id).all()
+    classroom_ids = [e.classroom_id for e in enrollments]
+    if not classroom_ids:
+        raise HTTPException(status_code=403, detail="You must be enrolled in at least one classroom to practice.")
+        
+    unit = None
+    if data.unit_id:
+        unit = db.query(Unit).filter(Unit.id == data.unit_id).first()
+    elif data.topic:
+        unit = db.query(Unit).filter(Unit.title.ilike(f"%{data.topic.strip()}%")).first()
+        
+    if not unit:
+        # Fallback to the first available unit in student's enrolled classrooms
+        assignments = db.query(Assignment).filter(Assignment.classroom_id.in_(classroom_ids), Assignment.status == "active").all()
+        for a in assignments:
+            ver = db.query(AssetVersion).filter(AssetVersion.id == a.asset_version_id).first()
+            if ver:
+                asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
+                if asset:
+                    unit = db.query(Unit).filter(Unit.id == asset.unit_id).first()
+                    if unit:
+                        break
+                        
+    if not unit:
+        raise HTTPException(status_code=404, detail="No assigned pack topic found for self-paced test.")
+        
+    # Retrieve unit source chunks
+    source = db.query(Source).filter(Source.id == unit.source_id).first()
+    latest_source_version = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).order_by(SourceVersion.version_no.desc()).first() if source else None
+    
+    chunks = []
+    if latest_source_version:
+        chunk_recs = db.query(Chunk).filter(Chunk.source_version_id == latest_source_version.id).order_by(Chunk.chunk_index.asc()).all()
+        chunks = [{"id": c.id, "chunk_index": c.chunk_index, "text": c.text} for c in chunk_recs]
+        
+    objectives = db.query(Objective).filter(Objective.unit_id == unit.id).all()
+    obj_texts = [o.text for o in objectives] if objectives else [f"Mastery of {unit.title} concepts and mechanisms"]
+    primary_obj = " · ".join(obj_texts[:2])
+    
+    num_q = max(1, min(20, int(data.num_questions or 5)))
+    difficulty = data.difficulty or "Medium"
+    bloom = data.bloom_level or "Apply"
+    
+    # Retrieve unit glossary
+    glossary_recs = db.query(Glossary).filter(Glossary.unit_id == unit.id).all()
+    glossary = [{"term": g.term, "canonical_wording": g.canonical_wording} for g in glossary_recs]
+
+    # Generate fresh self-paced assessment set using Gemini AI & RAG Engine
+    result = generate_formative_quiz(
+        objective_text=primary_obj,
+        chunks=chunks,
+        glossary=glossary,
+        bloom_level=bloom,
+        num_questions=num_q,
+        difficulty_mode=difficulty
+    )
+    
+    # Format questions cleanly for interactive client testing with option shuffling
+    formatted_questions = []
+    for idx, q in enumerate(result.get("questions", [])):
+        raw_opts = q.get("options", {})
+        raw_corr_id = str(q.get("correct_option_id") or q.get("correct_option") or "A").upper().strip()
+        raw_corr_text = str(q.get("correct_answer") or q.get("_correct_answer_text") or raw_opts.get(raw_corr_id, "")).strip()
+
+        if isinstance(raw_opts, dict) and len(raw_opts) >= 2:
+            if not raw_corr_text and raw_corr_id in raw_opts:
+                raw_corr_text = str(raw_opts[raw_corr_id]).strip()
+            
+            if raw_corr_id not in raw_opts:
+                for k, v in raw_opts.items():
+                    if str(v).strip().lower() == raw_corr_text.lower():
+                        raw_corr_id = k
+                        raw_corr_text = str(v).strip()
+                        break
+                else:
+                    raw_corr_id = list(raw_opts.keys())[0]
+                    raw_corr_text = str(raw_opts[raw_corr_id]).strip()
+
+            opt_values = [str(v).strip() for v in raw_opts.values()]
+            random.shuffle(opt_values)
+            std_keys = ["A", "B", "C", "D"][:len(opt_values)]
+            shuffled_options = {k: val for k, val in zip(std_keys, opt_values)}
+
+            try:
+                new_corr_idx = opt_values.index(raw_corr_text)
+                new_corr_key = std_keys[new_corr_idx]
+            except ValueError:
+                new_corr_key = "A"
+                shuffled_options["A"] = raw_corr_text
+        else:
+            shuffled_options = raw_opts
+            new_corr_key = raw_corr_id
+
+        formatted_questions.append({
+            "id": f"sp_{unit.id}_{idx+1}",
+            "question": q.get("question") or q.get("stem") or q.get("question_text", f"Question {idx+1}"),
+            "options": shuffled_options,
+            "correct_answer": new_corr_key,
+            "correct_option": new_corr_key,
+            "correct_option_id": new_corr_key,
+            "correct_answer_text": raw_corr_text,
+            "rationale": q.get("rationale") or q.get("explanation", ""),
+            "difficulty_tier": q.get("difficulty_tier", difficulty),
+            "bloom_level": q.get("bloom_level", bloom),
+            "citation": q.get("source_citation") or (result.get("chunk_citations", ["Chunk #1"])[0])
+        })
+    
+    return {
+        "unit_id": unit.id,
+        "topic": unit.title,
+        "unit_title": unit.title,
+        "difficulty": difficulty,
+        "bloom_level": bloom,
+        "total_questions": len(formatted_questions),
+        "questions": formatted_questions,
+        "chunk_citations": result.get("chunk_citations", []),
+        "generated_by": "Gemini AI Engine (Self-Paced Mode)",
+        "created_at": datetime.utcnow().isoformat()
+    }
+
 
 @router.post("/assignments/submit")
 def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
@@ -340,6 +520,7 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
     correct_count = 0
     total_count = 0
     obj_stats = {}
+    question_evaluations = []
     
     for a_id, item in unit_assets_map.items():
         obj_name = item["objective"].text if item["objective"] else "General Knowledge"
@@ -353,12 +534,45 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
             
             raw_id = q.get("id", idx + 1)
             full_q_id = f"q_{a_id}_{raw_id}"
-            correct_ans = str(q.get("correct_answer", "")).strip().upper()
             
-            student_ans = str(data.answers.get(full_q_id, data.answers.get(str(raw_id), ""))).strip().upper()
-            if student_ans and student_ans == correct_ans:
+            opts = q.get("options", {})
+            corr_key = str(q.get("correct_option_id") or q.get("correct_option") or q.get("_correct_option") or "").strip().upper()
+            corr_text = str(q.get("correct_answer") or q.get("correct_answer_text") or "").strip()
+            
+            if not corr_key and corr_text and isinstance(opts, dict):
+                for ok, ov in opts.items():
+                    if str(ov).strip().lower() == corr_text.lower():
+                        corr_key = ok.strip().upper()
+                        break
+            if not corr_key:
+                corr_key = "A"
+                
+            student_ans = str(data.answers.get(full_q_id, data.answers.get(str(raw_id), data.answers.get(f"q{idx+1}", "")))).strip().upper()
+            
+            is_correct = False
+            if student_ans:
+                if student_ans == corr_key:
+                    is_correct = True
+                elif student_ans in opts and str(opts[student_ans]).strip().lower() == corr_text.lower():
+                    is_correct = True
+                elif corr_key in opts and student_ans.lower() == str(opts[corr_key]).strip().lower():
+                    is_correct = True
+                    
+            if is_correct:
                 correct_count += 1
                 obj_stats[obj_name]["correct"] += 1
+                
+            question_evaluations.append({
+                "id": full_q_id,
+                "question": q.get("question") or q.get("question_text", f"Question {idx+1}"),
+                "options": opts,
+                "student_answer": student_ans,
+                "correct_option": corr_key,
+                "correct_answer_text": corr_text or opts.get(corr_key, ""),
+                "is_correct": is_correct,
+                "rationale": q.get("rationale") or q.get("explanation", ""),
+                "objective_title": obj_name
+            })
                 
     mastery_percentage = round((correct_count / max(total_count, 1)) * 100, 1)
     
@@ -389,11 +603,16 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
         "objective_breakdown": objective_breakdown,
         "total_questions": total_count,
         "correct_answers": correct_count,
+        "question_evaluations": question_evaluations,
         "explanation": "Mastery signal reflects formative alignment with source objectives across the full unit."
     }
 
 @router.get("/assets/{version_id}/download-pdf")
-def download_material_pdf(version_id: int, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+def download_material_pdf(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required_flexible)
+):
     ver = db.query(AssetVersion).filter(AssetVersion.id == version_id, AssetVersion.status == "approved").first()
     if not ver:
         raise HTTPException(status_code=403, detail="Draft or unapproved materials cannot be downloaded.")
@@ -408,15 +627,23 @@ def download_material_pdf(version_id: int, db: Session = Depends(get_db), curren
         content_json=content
     )
     
-    filename = f"Retrievo_{asset.type}_{ver.id}.pdf"
+    clean_unit = (unit.title if unit else 'Material').replace(' ', '_')
+    filename = f"Retrievo_{clean_unit}_{asset.type}_{ver.id}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
     )
 
 @router.get("/units/{unit_id}/download-pdf")
-def download_unit_full_pack_pdf(unit_id: int, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+def download_unit_full_pack_pdf(
+    unit_id: int,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required_flexible)
+):
     unit = db.query(Unit).filter(Unit.id == unit_id).first()
     if not unit:
         raise HTTPException(status_code=404, detail="Unit not found.")
@@ -452,7 +679,7 @@ def download_unit_full_pack_pdf(unit_id: int, db: Session = Depends(get_db), cur
 
     pdf_bytes = generate_learning_pack_pdf(
         unit_title=unit.title,
-        asset_title=f"Full Study Pack",
+        asset_title="Full Study Pack",
         content_json=full_content
     )
 
@@ -460,6 +687,71 @@ def download_unit_full_pack_pdf(unit_id: int, db: Session = Depends(get_db), cur
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={clean_filename}"}
+        headers={
+            "Content-Disposition": f'attachment; filename="{clean_filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
     )
+
+
+# ----------------------------------------------------------------------
+# STUDENT HELP REQUESTS
+# ----------------------------------------------------------------------
+@router.post("/requests")
+def create_student_help_request(
+    data: StudentRequestCreate,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    enrollment = db.query(Enrollment).filter(
+        Enrollment.student_id == current_student.id,
+        Enrollment.classroom_id == data.classroom_id
+    ).first()
+    if not enrollment:
+        raise HTTPException(status_code=403, detail="You are not enrolled in this classroom.")
+        
+    req = StudentRequest(
+        student_id=current_student.id,
+        classroom_id=data.classroom_id,
+        objective_id=data.objective_id,
+        unit_id=data.unit_id,
+        question_text=data.question_text.strip(),
+        details=data.details,
+        status="open"
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return {"id": req.id, "message": "Help request sent to instructor", "status": req.status}
+
+
+@router.get("/requests")
+def get_student_help_requests(
+    classroom_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    query = db.query(StudentRequest).filter(StudentRequest.student_id == current_student.id)
+    if classroom_id:
+        query = query.filter(StudentRequest.classroom_id == classroom_id)
+        
+    requests_list = query.order_by(StudentRequest.created_at.desc()).all()
+    res = []
+    for r in requests_list:
+        obj = db.query(Objective).filter(Objective.id == r.objective_id).first() if r.objective_id else None
+        c = db.query(Classroom).filter(Classroom.id == r.classroom_id).first()
+        res.append({
+            "id": r.id,
+            "classroom_id": r.classroom_id,
+            "classroom_name": c.name if c else "",
+            "objective_id": r.objective_id,
+            "objective_text": obj.text if obj else None,
+            "question_text": r.question_text,
+            "details": r.details,
+            "status": r.status,
+            "created_at": r.created_at.isoformat(),
+            "responses_count": len(r.responses)
+        })
+    return res
+
 

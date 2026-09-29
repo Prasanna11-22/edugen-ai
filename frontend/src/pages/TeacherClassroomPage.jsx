@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { 
   Users, UserPlus, Upload, BarChart3, Target, Award, Key, Copy, Check, 
-  RefreshCw, CheckCircle2, ChevronRight, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus
+  RefreshCw, CheckCircle2, ChevronRight, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus,
+  AlertTriangle, HelpCircle, MessageSquare, Filter, X, Send
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -13,7 +14,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const { showToast } = useToast();
   
   // Tabs: 'students' or 'classrooms'
-  const [activeTab, setActiveTab] = useState('students');
+  const [activeTab, setActiveTab] = useState('classrooms');
   
   // Data states
   const [allStudents, setAllStudents] = useState([]);
@@ -23,6 +24,27 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // Struggle Signals & Student Requests state
+  const [struggleSignals, setStruggleSignals] = useState({ signals: [], general_requests_count: 0, total_active_requests: 0 });
+  const [studentRequests, setStudentRequests] = useState([]);
+  const [selectedObjectiveFilter, setSelectedObjectiveFilter] = useState(null);
+  const [requestStatusFilter, setRequestStatusFilter] = useState('active'); // 'all', 'active', 'resolved'
+  const [loadingSignals, setLoadingSignals] = useState(false);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+
+  // Student help request creation modal (for simulation / testing)
+  const [showNewRequestModal, setShowNewRequestModal] = useState(false);
+  const [classroomObjectives, setClassroomObjectives] = useState([]);
+  const [newReqObjId, setNewReqObjId] = useState('');
+  const [newReqText, setNewReqText] = useState('');
+  const [newReqDetails, setNewReqDetails] = useState('');
+  const [creatingRequest, setCreatingRequest] = useState(false);
+
+  // Quick reply state
+  const [replyingRequestId, setReplyingRequestId] = useState(null);
+  const [replyMessage, setReplyMessage] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   // Student creation modal states
   const [showSingleModal, setShowSingleModal] = useState(false);
@@ -52,8 +74,11 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   useEffect(() => {
     if (selectedClassId) {
       fetchAnalytics(selectedClassId);
+      fetchStruggleSignals(selectedClassId);
+      fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
+      fetchClassroomObjectives(selectedClassId);
     }
-  }, [selectedClassId]);
+  }, [selectedClassId, selectedObjectiveFilter, requestStatusFilter]);
 
   const fetchStudentsDirectory = async () => {
     setLoadingStudents(true);
@@ -101,6 +126,160 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       console.error("Analytics fetch error", err);
     } finally {
       setLoadingAnalytics(false);
+    }
+  };
+
+  const fetchStruggleSignals = async (classId) => {
+    if (!classId) return;
+    setLoadingSignals(true);
+    try {
+      const res = await fetch(`/api/teacher/classrooms/${classId}/struggle-signals`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStruggleSignals(data);
+      }
+    } catch (err) {
+      console.error("Struggle signals fetch error", err);
+    } finally {
+      setLoadingSignals(false);
+    }
+  };
+
+  const fetchStudentRequests = async (classId, objFilter = selectedObjectiveFilter, statusFilter = requestStatusFilter) => {
+    if (!classId) return;
+    setLoadingRequests(true);
+    try {
+      let url = `/api/teacher/classrooms/${classId}/student-requests`;
+      const params = new URLSearchParams();
+      if (objFilter !== null && objFilter !== undefined) {
+        params.append('objective_id', objFilter);
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        params.append('status', statusFilter);
+      }
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setStudentRequests(await res.json());
+      }
+    } catch (err) {
+      console.error("Student requests fetch error", err);
+    } finally {
+      setLoadingRequests(false);
+    }
+  };
+
+  const fetchClassroomObjectives = async (classId) => {
+    if (!classId) return;
+    try {
+      const res = await fetch(`/api/teacher/classrooms/${classId}/objectives`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setClassroomObjectives(await res.json());
+      }
+    } catch (err) {
+      console.error("Classroom objectives fetch error", err);
+    }
+  };
+
+  const handleSelectObjectiveFilter = (objId) => {
+    if (selectedObjectiveFilter === objId) {
+      setSelectedObjectiveFilter(null);
+    } else {
+      setSelectedObjectiveFilter(objId);
+    }
+  };
+
+  const handleUpdateRequestStatus = async (reqId, newStatus) => {
+    try {
+      const res = await fetch(`/api/teacher/student-requests/${reqId}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      if (res.ok) {
+        showToast(`Request marked as ${newStatus}!`, "success");
+        if (selectedClassId) {
+          fetchStruggleSignals(selectedClassId);
+          fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
+        }
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleSendReply = async (reqId) => {
+    if (!replyMessage.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await fetch(`/api/teacher/student-requests/${reqId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: replyMessage.trim() })
+      });
+      if (res.ok) {
+        showToast("Response sent to student!", "success");
+        setReplyMessage('');
+        setReplyingRequestId(null);
+        if (selectedClassId) {
+          fetchStruggleSignals(selectedClassId);
+          fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
+        }
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
+  const handleCreateHelpRequest = async (e) => {
+    e.preventDefault();
+    if (!newReqText.trim() || !selectedClassId) return;
+    setCreatingRequest(true);
+    try {
+      const res = await fetch(`/api/teacher/classrooms/${selectedClassId}/student-requests/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          classroom_id: selectedClassId,
+          objective_id: newReqObjId ? Number(newReqObjId) : null,
+          question_text: newReqText.trim(),
+          details: newReqDetails.trim() || undefined
+        })
+      });
+      if (res.ok) {
+        showToast("Student help request logged successfully!", "success");
+        setShowNewRequestModal(false);
+        setNewReqText('');
+        setNewReqDetails('');
+        setNewReqObjId('');
+        if (selectedClassId) {
+          fetchStruggleSignals(selectedClassId);
+          fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
+        }
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setCreatingRequest(false);
     }
   };
 
@@ -415,6 +594,298 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                   </div>
                 )}
               </div>
+
+              {/* ========================================================================= */}
+              {/* 1. CLASS STRUGGLE SIGNALS CARD */}
+              {/* ========================================================================= */}
+              <GlassCard
+                icon={AlertTriangle}
+                title={`Class Struggle Signals: ${activeClass?.name}${activeClass?.subject ? ` (${activeClass.subject})` : ''}`}
+                subtitle="Open student help requests grouped and ranked by curriculum learning objective"
+                accent={true}
+                action={
+                  <div className="flex items-center gap-2">
+                    {struggleSignals.total_active_requests > 0 && (
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50 flex items-center gap-1 shadow-sm">
+                        <AlertTriangle className="w-3 h-3 text-rose-400" /> {struggleSignals.total_active_requests} Open Signal(s)
+                      </span>
+                    )}
+                    <button
+                      onClick={() => setShowNewRequestModal(true)}
+                      className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition"
+                      title="Log or Simulate Student Help Request"
+                    >
+                      <Plus className="w-3.5 h-3.5 text-neon-orange" /> Log Help Request
+                    </button>
+                  </div>
+                }
+              >
+                {loadingSignals ? (
+                  <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Aggregating struggle signals...
+                  </div>
+                ) : struggleSignals.signals.length === 0 && struggleSignals.general_requests_count === 0 ? (
+                  <div className="py-6 text-center space-y-2">
+                    <div className="w-10 h-10 rounded-full bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+                      <CheckCircle2 className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      No active struggle signals logged for this classroom. All learning objectives are on track without open student help blockers.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Active Filter Reminder */}
+                    {selectedObjectiveFilter !== null && (
+                      <div className="p-2.5 rounded-xl bg-neon-orange/15 border border-neon-orange/40 flex items-center justify-between text-xs text-slate-200">
+                        <div className="flex items-center gap-2">
+                          <Filter className="w-3.5 h-3.5 text-neon-orange" />
+                          <span>
+                            Filtering Student Requests Inbox below by Objective ID: <strong className="text-neon-glow font-mono">#{selectedObjectiveFilter}</strong>
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setSelectedObjectiveFilter(null)}
+                          className="text-[11px] font-mono text-neon-orange hover:text-white underline flex items-center gap-1 font-bold"
+                        >
+                          <X className="w-3.5 h-3.5" /> Clear Filter
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Ranked Objectives List */}
+                    <div className="space-y-2.5">
+                      {struggleSignals.signals.map((sig, idx) => {
+                        const isSelected = selectedObjectiveFilter === sig.objective_id;
+                        return (
+                          <div
+                            key={sig.objective_id}
+                            onClick={() => handleSelectObjectiveFilter(sig.objective_id)}
+                            className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                              isSelected
+                                ? 'bg-neon-orange/20 border-neon-orange ring-2 ring-neon-orange/50 shadow-neon-sm'
+                                : sig.has_warning
+                                  ? 'bg-rose-950/25 border-rose-500/60 hover:border-rose-500 shadow-sm'
+                                  : 'bg-dark-900/90 border-slate-800 hover:border-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
+                                sig.has_warning 
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' 
+                                  : 'bg-dark-950 text-slate-400 border border-slate-800'
+                              }`}>
+                                #{idx + 1}
+                              </span>
+
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-bold text-white hover:text-neon-glow transition-colors">
+                                    {sig.objective_text}
+                                  </span>
+                                  {sig.unit_title && (
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                      ({sig.unit_title})
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 block">
+                                  {isSelected ? '✓ Currently filtering inbox below (Click to reset)' : 'Click row to filter student requests inbox below'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                              {sig.has_warning && (
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-rose-500/25 text-rose-300 border border-rose-500/60 flex items-center gap-1 shadow-sm">
+                                  <AlertTriangle className="w-3 h-3 text-rose-400" /> ⚠ Multiple students need help
+                                </span>
+                              )}
+                              <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
+                                sig.has_warning 
+                                  ? 'bg-rose-950 text-rose-200 border border-rose-500/60' 
+                                  : 'bg-dark-950 text-neon-orange border border-slate-800'
+                              }`}>
+                                {sig.request_count} {sig.request_count === 1 ? 'Request' : 'Requests'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* General Requests (no objective_id) */}
+                    {struggleSignals.general_requests_count > 0 && (
+                      <div className="p-3 rounded-xl bg-dark-950/80 border border-slate-800/80 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 text-slate-300">
+                          <HelpCircle className="w-4 h-4 text-neon-amber" />
+                          <span>General requests: <strong className="text-neon-amber font-mono text-sm">{struggleSignals.general_requests_count}</strong></span>
+                        </div>
+                        <span className="text-[11px] font-mono text-slate-500">Unassigned to specific objective</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </GlassCard>
+
+              {/* ========================================================================= */}
+              {/* 2. STUDENT HELP REQUESTS INBOX CARD */}
+              {/* ========================================================================= */}
+              <GlassCard
+                icon={MessageSquare}
+                title={`Student Help Requests Inbox: ${activeClass?.name}`}
+                subtitle="Student inquiries, conceptual clarification tickets, and step blockers"
+                action={
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center bg-dark-950 p-1 rounded-xl border border-slate-800 text-[11px]">
+                      {[
+                        { id: 'active', label: 'Open & In Progress' },
+                        { id: 'resolved', label: 'Resolved' },
+                        { id: 'all', label: 'All' }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          onClick={() => setRequestStatusFilter(tab.id)}
+                          className={`px-2.5 py-1 rounded-lg font-semibold transition ${
+                            requestStatusFilter === tab.id
+                              ? 'bg-neon-orange text-white'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                }
+              >
+                {loadingRequests ? (
+                  <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading student requests...
+                  </div>
+                ) : studentRequests.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-500 space-y-2">
+                    <p>No student requests match the active filter criteria.</p>
+                    {selectedObjectiveFilter && (
+                      <button
+                        onClick={() => setSelectedObjectiveFilter(null)}
+                        className="text-neon-orange underline font-semibold block mx-auto"
+                      >
+                        Clear Objective Filter
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {studentRequests.map((req) => (
+                      <div
+                        key={req.id}
+                        className="p-4 rounded-xl bg-dark-900/90 border border-slate-800 hover:border-slate-700 transition space-y-3"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-xs text-white">{req.student_name}</span>
+                            <span className="text-[11px] font-mono text-slate-400">({req.student_email})</span>
+                            <Badge variant={req.status === 'resolved' ? 'approved' : (req.status === 'in_progress' ? 'warning' : 'royal')}>
+                              {req.status === 'in_progress' ? 'In Progress' : req.status.toUpperCase()}
+                            </Badge>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {new Date(req.created_at).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {req.objective_text && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-dark-950 p-2 rounded-lg border border-slate-800">
+                            <Target className="w-3.5 h-3.5 text-neon-orange shrink-0" />
+                            <span>Tagged Objective: <strong className="text-white">{req.objective_text}</strong></span>
+                          </div>
+                        )}
+
+                        <div className="text-xs text-slate-200 leading-relaxed font-sans">
+                          <strong className="text-white block mb-0.5">{req.question_text}</strong>
+                          {req.details && <p className="text-slate-400 text-[11px] mt-1">{req.details}</p>}
+                        </div>
+
+                        {/* Response Thread */}
+                        {req.responses && req.responses.length > 0 && (
+                          <div className="space-y-2 pt-2 border-t border-slate-800/60 pl-3 border-l-2 border-neon-orange/40">
+                            {req.responses.map(resp => (
+                              <div key={resp.id} className="text-xs space-y-0.5">
+                                <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                                  <span className="font-bold text-neon-orange">{resp.user_name} ({resp.user_role}):</span>
+                                  <span>{new Date(resp.created_at).toLocaleTimeString()}</span>
+                                </div>
+                                <p className="text-slate-300 bg-dark-950 p-2 rounded-lg border border-slate-800 text-[11px]">
+                                  {resp.message}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Quick Actions & Reply Box */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
+                          <div className="flex items-center gap-1.5">
+                            {req.status !== 'in_progress' && req.status !== 'resolved' && (
+                              <button
+                                onClick={() => handleUpdateRequestStatus(req.id, 'in_progress')}
+                                className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-neon-amber border border-slate-800 text-[11px] font-semibold transition"
+                              >
+                                Mark In Progress
+                              </button>
+                            )}
+                            {req.status !== 'resolved' && (
+                              <button
+                                onClick={() => handleUpdateRequestStatus(req.id, 'resolved')}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-500/40 text-[11px] font-semibold transition flex items-center gap-1"
+                              >
+                                <Check className="w-3 h-3" /> Mark Resolved
+                              </button>
+                            )}
+                            {req.status === 'resolved' && (
+                              <button
+                                onClick={() => handleUpdateRequestStatus(req.id, 'open')}
+                                className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-slate-400 text-[11px] font-semibold transition"
+                              >
+                                Reopen
+                              </button>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => setReplyingRequestId(replyingRequestId === req.id ? null : req.id)}
+                            className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-sky-400 border border-slate-700 text-[11px] font-semibold flex items-center gap-1"
+                          >
+                            <MessageSquare className="w-3 h-3" /> {replyingRequestId === req.id ? 'Cancel Reply' : 'Reply'}
+                          </button>
+                        </div>
+
+                        {/* Inline Reply Input */}
+                        {replyingRequestId === req.id && (
+                          <div className="pt-2 animate-in fade-in flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={replyMessage}
+                              onChange={(e) => setReplyMessage(e.target.value)}
+                              placeholder="Type response to student..."
+                              className="flex-1 rounded-xl glass-input p-2 text-xs"
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleSendReply(req.id); }}
+                            />
+                            <button
+                              onClick={() => handleSendReply(req.id)}
+                              disabled={sendingReply || !replyMessage.trim()}
+                              className="btn-royal text-xs py-2 px-3 flex items-center gap-1 shrink-0"
+                            >
+                              <Send className="w-3.5 h-3.5" /> Send
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </GlassCard>
 
               {/* OBJECTIVE ALIGNMENT MAP */}
               <GlassCard
@@ -767,8 +1238,86 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
         </div>
       )}
 
+      {/* LOG STUDENT HELP REQUEST MODAL */}
+      {showNewRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-neon-orange" /> Log Student Help Request
+              </h3>
+              <button onClick={() => setShowNewRequestModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-slate-300">
+              Record a student struggle signal or question tagged to a learning objective.
+            </p>
+
+            <form onSubmit={handleCreateHelpRequest} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Curriculum Objective (Optional)</label>
+                <select
+                  value={newReqObjId}
+                  onChange={(e) => setNewReqObjId(e.target.value)}
+                  className="w-full rounded-xl glass-input p-2.5 text-xs"
+                >
+                  <option value="">General request (no specific objective)</option>
+                  {classroomObjectives.map((o) => (
+                    <option key={o.objective_id} value={o.objective_id}>
+                      {o.objective_text} ({o.unit_title || 'Unit'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Student Question / Struggle Area *</label>
+                <input
+                  type="text"
+                  value={newReqText}
+                  onChange={(e) => setNewReqText(e.target.value)}
+                  placeholder="e.g. Can't understand why user mode can't access hardware directly"
+                  required
+                  className="w-full rounded-xl glass-input p-2.5 text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Context / Details (Optional)</label>
+                <textarea
+                  value={newReqDetails}
+                  onChange={(e) => setNewReqDetails(e.target.value)}
+                  placeholder="e.g. Struggling with protected system call traps"
+                  rows={2}
+                  className="w-full rounded-xl glass-input p-2.5 text-xs resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewRequestModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs bg-dark-800 text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingRequest || !newReqText.trim()}
+                  className="btn-royal text-xs py-2 px-4"
+                >
+                  {creatingRequest ? 'Logging...' : 'Submit Request'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
 
 export default TeacherClassroomPage;
+
