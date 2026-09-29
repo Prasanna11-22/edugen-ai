@@ -102,6 +102,15 @@ class GenerateAssetsRequest(BaseModel):
     custom_prompt_mod: Optional[str] = None
     quiz_count: Optional[int] = None
     difficulty: Optional[str] = None # Easy, Medium, Hard
+    low_confidence_objective_ids: Optional[List[int]] = []
+    low_confidence_objective_texts: Optional[List[str]] = []
+
+class ObjectiveCoverageCheckRequest(BaseModel):
+    objective_text: str
+    unit_id: Optional[int] = None
+    source_text: Optional[str] = None
+    chunks: Optional[List[str]] = None
+    threshold: Optional[float] = 0.55
 
 class AssetReviewAction(BaseModel):
     status: str # approved, needs_revision
@@ -150,6 +159,16 @@ class SelfPacedTestGenerateRequest(BaseModel):
     num_questions: Optional[int] = 5
     bloom_level: Optional[str] = "Apply"
 
+class DiagnosticPoolRequest(BaseModel):
+    unit_id: Optional[int] = None
+    topic: Optional[str] = None
+    questions_per_tier: Optional[int] = 3 # Generates 3 Easy, 3 Medium, 3 Hard questions = 9 total
+
+class DiagnosticEvaluateRequest(BaseModel):
+    unit_id: Optional[int] = None
+    unit_title: Optional[str] = None
+    answers_history: List[Dict[str, Any]] = [] # [{ question_id, concept_topic, difficulty_tier, is_correct, selected_option, correct_option }]
+
 # Per-Question Selective Regeneration
 class QuizItemSelectiveRegenRequest(BaseModel):
     item_ids: Optional[List[Any]] = []
@@ -186,40 +205,78 @@ class StudentRequestStatusUpdate(BaseModel):
 class StudentRequestResponseCreate(BaseModel):
     message: str
 
-# -------------------------------------------------------------
-# OCR & SOURCE PAGES SCHEMAS
-# -------------------------------------------------------------
-class SourcePageReviewRequest(BaseModel):
-    cleaned_text: Optional[str] = None
-    review_status: str = "approved" # approved, rejected, needs_review
-    teacher_notes: Optional[str] = None
-
+# OCR & Review-by-Exception Schemas
 class OCRPageResponse(BaseModel):
     id: Optional[int] = None
     page_number: int
     source_id: Optional[int] = None
     source_version_id: Optional[int] = None
-    raw_text: str
-    cleaned_text: str
-    review_status: str # needs_review, auto_approved, approved, rejected
+    image_path: Optional[str] = None
+    ocr_raw_text: str
+    reviewed_text: Optional[str] = None
+    confidence_score: float
+    review_status: str # auto_accepted, needs_review, reviewed
     has_uncertain_spans: bool
     uncertain_spans: List[Dict[str, Any]] = []
     uncertain_count: int = 0
-    ocr_provider: str = "gemini_vision"
-    image_path: Optional[str] = None
-    confidence_score: Optional[float] = None
+    ocr_provider: Optional[str] = "gemini_vision"
     reviewed_by: Optional[int] = None
     reviewed_at: Optional[datetime] = None
     teacher_notes: Optional[str] = None
     created_at: Optional[datetime] = None
 
+class SourcePageReviewRequest(BaseModel):
+    reviewed_text: Optional[str] = None
+    review_status: Optional[str] = "reviewed" # reviewed, auto_accepted, needs_review
+    teacher_notes: Optional[str] = None
+
 class BatchOCRResponse(BaseModel):
     total_pages: int
-    processed_pages: int
+    auto_accepted_count: int
     needs_review_count: int
-    auto_approved_count: int
-    pages: List[OCRPageResponse]
+    reviewed_count: int = 0
+    can_proceed_to_chunking: bool
+    confidence_threshold: float = 0.85
     message: str
+    pages: List[OCRPageResponse]
 
+class OCRSummaryResponse(BaseModel):
+    source_id: Optional[int] = None
+    total_pages: int
+    auto_accepted_count: int
+    needs_review_count: int
+    reviewed_count: int = 0
+    can_proceed_to_chunking: bool
+    confidence_threshold: float = 0.85
 
+# Validation Layer Schemas
+class ObjectiveValidationRequest(BaseModel):
+    text: str
+    target_level: Optional[str] = "High School"
+    bloom_level: Optional[str] = "Understand"
+    existing_objectives: Optional[List[str]] = []
+    unit_id: Optional[int] = None
+
+class OCRCorrectionValidationRequest(BaseModel):
+    original_ocr_text: str
+    teacher_text: str
+    page_id: Optional[int] = None
+    page_number: Optional[int] = 1
+
+class GlossaryTermValidationRequest(BaseModel):
+    term: str
+    canonical_wording: Optional[str] = ""
+    unit_id: Optional[int] = None
+    source_chunks: Optional[List[str]] = []
+    glossary_id: Optional[int] = None
+
+class AssetEditValidationRequest(BaseModel):
+    asset_type: str
+    content_json: Dict[str, Any]
+    unit_id: Optional[int] = None
+    version_id: Optional[int] = None
+
+class ValidationFlagResolutionRequest(BaseModel):
+    resolution: str # used_suggestion, kept_original, edited_manually
+    final_value: Optional[str] = None
 

@@ -4,7 +4,8 @@ import { useToast } from '../context/ToastContext';
 import { 
   Users, UserPlus, Upload, BarChart3, Target, Award, Key, Copy, Check, 
   RefreshCw, CheckCircle2, ChevronRight, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus,
-  AlertTriangle, HelpCircle, MessageSquare, Filter, X, Send
+  AlertTriangle, HelpCircle, MessageSquare, Filter, X, Send,
+  ShieldCheck, Clock, UserCheck, UserX, Trash2
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -63,12 +64,18 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const [newClassSubject, setNewClassSubject] = useState('');
   const [creatingClass, setCreatingClass] = useState(false);
 
+  // Join Permission Requests state
+  const [joinRequests, setJoinRequests] = useState([]);
+  const [loadingJoinRequests, setLoadingJoinRequests] = useState(false);
+  const [processingRequestId, setProcessingRequestId] = useState(null);
+
   // Copy state
   const [copiedKey, setCopiedKey] = useState('');
 
   useEffect(() => {
     fetchStudentsDirectory();
     fetchClassroomsList();
+    fetchJoinRequests();
   }, []);
 
   useEffect(() => {
@@ -110,6 +117,65 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       }
     } catch (err) {
       console.error("Error fetching classrooms", err);
+    }
+  };
+
+  const fetchJoinRequests = async (classId = null) => {
+    setLoadingJoinRequests(true);
+    try {
+      const url = classId 
+        ? `/api/teacher/classrooms/join-requests?classroom_id=${classId}` 
+        : '/api/teacher/classrooms/join-requests';
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setJoinRequests(await res.json());
+      }
+    } catch (err) {
+      console.error("Error fetching join requests", err);
+    } finally {
+      setLoadingJoinRequests(false);
+    }
+  };
+
+  const handleApproveJoinRequest = async (enrollmentId, studentName, className) => {
+    setProcessingRequestId(enrollmentId);
+    try {
+      const res = await fetch(`/api/teacher/classrooms/join-requests/${enrollmentId}/approve`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to approve join request");
+      showToast(`✨ Permission granted! ${studentName} is now enrolled in ${className}.`, "success");
+      await fetchJoinRequests();
+      await fetchClassroomsList();
+      await fetchStudentsDirectory();
+      if (selectedClassId) await fetchAnalytics(selectedClassId);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
+  const handleRejectJoinRequest = async (enrollmentId, studentName) => {
+    setProcessingRequestId(enrollmentId);
+    try {
+      const res = await fetch(`/api/teacher/classrooms/join-requests/${enrollmentId}/reject`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to decline join request");
+      showToast(`Join permission request for ${studentName} declined.`, "info");
+      await fetchJoinRequests();
+      await fetchClassroomsList();
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setProcessingRequestId(null);
     }
   };
 
@@ -313,6 +379,28 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
     }
   };
 
+  const handleDeleteClassroom = async (classId, className) => {
+    if (!window.confirm(`Are you sure you want to delete classroom "${className}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/teacher/classrooms/${classId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to delete classroom');
+      showToast(data.message || 'Classroom deleted successfully', 'success');
+      await fetchClassroomsList();
+      await fetchStudentsDirectory();
+      setSelectedClassId(null);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
+
   const handleCreateSingleStudent = async (e) => {
     e.preventDefault();
     try {
@@ -361,12 +449,27 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       if (!res.ok) throw new Error(data.detail || 'Bulk creation failed');
       setBulkCreatedStudents(data.students);
       setBulkText('');
-      showToast(`Successfully created ${data.count} student accounts!`, "success");
+      const count = data.created_count ?? data.students?.length ?? 0;
+      showToast(`Successfully created ${count} student accounts!`, "success");
       await fetchStudentsDirectory();
       if (selectedClassId) await fetchAnalytics(selectedClassId);
     } catch (err) {
       showToast(err.message, "error");
     }
+  };
+
+  const handleCsvFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        setBulkText(text);
+        showToast(`Loaded ${file.name}`, 'info');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const copyToClipboard = (text, id) => {
@@ -417,7 +520,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       </div>
 
       {/* Navigation Tab Bar */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 flex-wrap">
         <button
           onClick={() => setActiveTab('students')}
           className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'students' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
@@ -430,6 +533,25 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'classrooms' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
         >
           <BookOpen className="w-4 h-4" /> Classrooms & Unique Join Codes ({classrooms.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('requests')}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${
+            activeTab === 'requests' 
+              ? 'bg-neon-orange text-white shadow-neon-sm' 
+              : joinRequests.length > 0
+                ? 'text-amber-300 bg-amber-950/40 border border-amber-500/50 hover:bg-amber-900/50 shadow-neon-sm'
+                : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Join Permission Requests</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+            joinRequests.length > 0 ? 'bg-amber-400 text-dark-950 animate-pulse' : 'bg-dark-950 text-slate-500'
+          }`}>
+            {joinRequests.length}
+          </span>
         </button>
       </div>
 
@@ -570,9 +692,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     <button
                       key={c.id}
                       onClick={() => setSelectedClassId(c.id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${selectedClassId === c.id ? 'bg-neon-orange text-white shadow-neon-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-neon-orange text-white shadow-neon-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
                     >
-                      {c.name} {c.subject ? `(${c.subject})` : ''}
+                      <span>{c.name} {c.subject ? `(${c.subject})` : ''}</span>
+                      {c.pending_requests_count > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-amber-400 text-dark-950 animate-pulse">
+                          {c.pending_requests_count}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -591,9 +718,35 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     >
                       {copiedKey === 'join_code' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
+                    <span className="text-slate-700">|</span>
+                    <button
+                      onClick={() => handleDeleteClassroom(activeClass.id, activeClass.name)}
+                      className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition"
+                      title="Delete Classroom"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
+
+              {/* Pending Join Requests Alert Banner for Active Class */}
+              {activeClass && activeClass.pending_requests_count > 0 && (
+                <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-neon-sm animate-in fade-in">
+                  <div className="flex items-center gap-2.5">
+                    <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                    <span>
+                      <strong>{activeClass.pending_requests_count} student(s)</strong> have submitted this classroom's join code ({activeClass.join_code}) and are awaiting your permission.
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('requests')}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-dark-950 font-bold text-xs shrink-0 flex items-center gap-1.5 shadow-sm transition"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" /> Review & Grant Permission
+                  </button>
+                </div>
+              )}
 
               {/* ========================================================================= */}
               {/* 1. CLASS STRUGGLE SIGNALS CARD */}
@@ -992,6 +1145,110 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
         </div>
       )}
 
+      {/* TAB 3: JOIN PERMISSION REQUESTS */}
+      {activeTab === 'requests' && (
+        <div className="space-y-6 animate-in fade-in">
+          <GlassCard
+            icon={ShieldCheck}
+            title="Classroom Join Permission Requests"
+            subtitle="Students who have entered your classroom join code and are awaiting instructor approval before accessing curriculum packs and tests."
+            accent={true}
+            action={
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fetchJoinRequests()}
+                  className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 text-xs font-semibold flex items-center gap-1 border border-slate-700 transition"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingJoinRequests ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+                <Badge variant={joinRequests.length > 0 ? "warning" : "approved"}>
+                  {joinRequests.length} Pending
+                </Badge>
+              </div>
+            }
+          >
+            {loadingJoinRequests ? (
+              <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading join permission requests...
+              </div>
+            ) : joinRequests.length === 0 ? (
+              <div className="py-12 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mx-auto">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <h3 className="text-sm font-semibold text-white">All Caught Up!</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  There are no pending join requests. When students enter your classroom code, their permission requests will appear here for your review and approval.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 font-mono text-[11px] uppercase tracking-wider">
+                      <th className="pb-3 font-semibold">Student Name & Email</th>
+                      <th className="pb-3 font-semibold">Target Classroom</th>
+                      <th className="pb-3 font-semibold">Join Code</th>
+                      <th className="pb-3 font-semibold">Requested At</th>
+                      <th className="pb-3 font-semibold">Status</th>
+                      <th className="pb-3 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {joinRequests.map(req => {
+                      const isProcessing = processingRequestId === req.enrollment_id;
+                      return (
+                        <tr key={req.enrollment_id} className="hover:bg-dark-900/50 transition">
+                          <td className="py-3.5">
+                            <div className="font-semibold text-white">{req.student_name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">{req.student_email}</div>
+                          </td>
+                          <td className="py-3.5">
+                            <div className="font-semibold text-slate-200">{req.classroom_name}</div>
+                            <div className="text-[11px] text-neon-orange font-mono">{req.classroom_subject}</div>
+                          </td>
+                          <td className="py-3.5">
+                            <span className="px-2 py-0.5 rounded bg-dark-950 border border-slate-800 font-mono text-neon-amber font-bold text-xs tracking-wider">
+                              {req.join_code}
+                            </span>
+                          </td>
+                          <td className="py-3.5 text-slate-400 font-mono text-[11px]">
+                            {new Date(req.requested_at).toLocaleString()}
+                          </td>
+                          <td className="py-3.5">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider animate-pulse">
+                              Pending Approval
+                            </span>
+                          </td>
+                          <td className="py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleApproveJoinRequest(req.enrollment_id, req.student_name, req.classroom_name)}
+                                disabled={isProcessing}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1 shadow-sm transition disabled:opacity-50"
+                              >
+                                <Check className="w-3.5 h-3.5" /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleRejectJoinRequest(req.enrollment_id, req.student_name)}
+                                disabled={isProcessing}
+                                className="px-3 py-1.5 rounded-xl bg-dark-800 hover:bg-rose-950/80 hover:border-rose-500/50 border border-slate-700 text-slate-300 hover:text-rose-300 text-xs font-semibold transition disabled:opacity-50"
+                              >
+                                <X className="w-3.5 h-3.5" /> Decline
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </GlassCard>
+        </div>
+      )}
+
       {/* CREATE CLASSROOM MODAL */}
       {showClassModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -1192,14 +1449,28 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               </div>
             ) : (
               <form onSubmit={handleCreateBulkStudents} className="space-y-4">
-                <textarea
-                  value={bulkText}
-                  onChange={(e) => setBulkText(e.target.value)}
-                  placeholder={`Ananya Sen, ananya@school.edu\nDev Kumar, dev@school.edu\nMeera Nair, meera@school.edu`}
-                  rows={6}
-                  required
-                  className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none"
-                />
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Names & Emails</label>
+                    <label className="cursor-pointer text-[11px] text-neon-orange hover:text-neon-orange/80 flex items-center gap-1 font-semibold transition-colors">
+                      <Upload className="w-3.5 h-3.5" /> Upload .csv file
+                      <input
+                        type="file"
+                        accept=".csv,.txt"
+                        className="hidden"
+                        onChange={handleCsvFileUpload}
+                      />
+                    </label>
+                  </div>
+                  <textarea
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder={`Ananya Sen, ananya@school.edu\nDev Kumar, dev@school.edu\nMeera Nair, meera@school.edu`}
+                    rows={6}
+                    required
+                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none"
+                  />
+                </div>
 
                 {classrooms.length > 0 && (
                   <div>

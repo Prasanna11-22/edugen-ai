@@ -12,11 +12,11 @@ from ..models import (
 )
 from ..schemas import (
     JoinClassroomRequest, SubmitAssessmentRequest, SelfPacedTestGenerateRequest,
-    StudentRequestCreate
+    StudentRequestCreate, DiagnosticPoolRequest, DiagnosticEvaluateRequest
 )
 from ..auth import student_required, student_required_flexible
 from ..services.pdf_exporter import generate_learning_pack_pdf
-from ..services.rag_engine import generate_formative_quiz
+from ..services.rag_engine import generate_formative_quiz, generate_diagnostic_pool
 
 router = APIRouter(prefix="/api/student", tags=["Student Portal"])
 
@@ -32,7 +32,8 @@ def get_student_classrooms(db: Session = Depends(get_db), current_student: User 
             "name": classroom.name if classroom else "",
             "subject": classroom.subject if classroom else "",
             "teacher_name": teacher.name if teacher else "Instructor",
-            "joined_at": e.joined_at
+            "joined_at": e.joined_at,
+            "status": e.status or "approved"
         })
     return res
 
@@ -43,18 +44,46 @@ def join_classroom_by_code(data: JoinClassroomRequest, db: Session = Depends(get
     if not classroom:
         raise HTTPException(status_code=404, detail="Invalid join code. Classroom not found.")
         
+    teacher = db.query(User).filter(User.id == classroom.teacher_id).first()
+    teacher_name = teacher.name if teacher else "Instructor"
+
     existing = db.query(Enrollment).filter(
         Enrollment.student_id == current_student.id,
         Enrollment.classroom_id == classroom.id
     ).first()
+    
     if existing:
-        return {"message": "You are already enrolled in this classroom.", "classroom_id": classroom.id}
+        if existing.status == "approved":
+            return {
+                "message": f"You are already an enrolled member of {classroom.name}.",
+                "classroom_id": classroom.id,
+                "status": "approved"
+            }
+        elif existing.status == "pending":
+            return {
+                "message": f"Join permission request for '{classroom.name}' has already been submitted to {teacher_name} and is awaiting approval.",
+                "classroom_id": classroom.id,
+                "status": "pending"
+            }
+        elif existing.status == "rejected":
+            existing.status = "pending"
+            existing.joined_at = datetime.utcnow()
+            db.commit()
+            return {
+                "message": f"Join permission request for '{classroom.name}' resubmitted to {teacher_name} for approval!",
+                "classroom_id": classroom.id,
+                "status": "pending"
+            }
         
-    enrollment = Enrollment(student_id=current_student.id, classroom_id=classroom.id)
+    enrollment = Enrollment(student_id=current_student.id, classroom_id=classroom.id, status="pending")
     db.add(enrollment)
     db.commit()
     
-    return {"message": f"Successfully joined {classroom.name}!", "classroom_id": classroom.id}
+    return {
+        "message": f"Permission requested! Your request to join '{classroom.name}' was sent to {teacher_name}. Access will be granted once approved.",
+        "classroom_id": classroom.id,
+        "status": "pending"
+    }
 
 @router.get("/materials")
 def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
@@ -64,13 +93,14 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
     The study pack contains explanation, worked examples, revision rules, and glossary.
     Assigned test questions are excluded from the pack and served via Formative Assessments.
     """
-    # Verify enrollment
+    # Verify enrollment is active and approved by instructor
     enrollment = db.query(Enrollment).filter(
         Enrollment.student_id == current_student.id,
-        Enrollment.classroom_id == classroom_id
+        Enrollment.classroom_id == classroom_id,
+        Enrollment.status == "approved"
     ).first()
     if not enrollment:
-        raise HTTPException(status_code=403, detail="You are not enrolled in this classroom.")
+        raise HTTPException(status_code=403, detail="You are not enrolled or pending teacher approval for this classroom.")
         
     classroom = db.query(Classroom).filter(Classroom.id == classroom_id).first()
     if not classroom:
@@ -182,10 +212,11 @@ def get_approved_materials(classroom_id: int, db: Session = Depends(get_db), cur
 def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
     enrollment = db.query(Enrollment).filter(
         Enrollment.student_id == current_student.id,
-        Enrollment.classroom_id == classroom_id
+        Enrollment.classroom_id == classroom_id,
+        Enrollment.status == "approved"
     ).first()
     if not enrollment:
-        raise HTTPException(status_code=403, detail="You are not enrolled in this classroom.")
+        raise HTTPException(status_code=403, detail="You are not enrolled or pending teacher approval for this classroom.")
         
     classroom = db.query(Classroom).filter(Classroom.id == classroom_id).first()
     if not classroom:
@@ -302,7 +333,7 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
 @router.get("/self-paced/topics")
 def get_self_paced_topics(db: Session = Depends(get_db), current_student: User = Depends(student_required)):
     """Returns available topics from all approved packs in enrolled classrooms."""
-    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id).all()
+    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id, Enrollment.status == "approved").all()
     classroom_ids = [e.classroom_id for e in enrollments]
     if not classroom_ids:
         return []
@@ -349,7 +380,7 @@ def generate_self_paced_test(
     Generates dynamic on-demand self-paced practice questions using Gemini AI
     strictly grounded in the selected assigned pack topic's source material.
     """
-    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id).all()
+    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id, Enrollment.status == "approved").all()
     classroom_ids = [e.classroom_id for e in enrollments]
     if not classroom_ids:
         raise HTTPException(status_code=403, detail="You must be enrolled in at least one classroom to practice.")
@@ -468,6 +499,230 @@ def generate_self_paced_test(
         "generated_by": "Gemini AI Engine (Self-Paced Mode)",
         "created_at": datetime.utcnow().isoformat()
     }
+
+
+@router.post("/self-paced/diagnostic-pool")
+def get_adaptive_diagnostic_pool(
+    data: DiagnosticPoolRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    """
+    Generates a calibrated multi-tier question pool (Easy, Medium, Hard)
+    for Computer Adaptive Testing (CAT) dynamic diagnostic evaluation.
+    """
+    enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id, Enrollment.status == "approved").all()
+    classroom_ids = [e.classroom_id for e in enrollments]
+    if not classroom_ids:
+        raise HTTPException(status_code=403, detail="You must be enrolled in at least one classroom to practice.")
+
+    unit = None
+    if data.unit_id:
+        unit = db.query(Unit).filter(Unit.id == data.unit_id).first()
+    elif data.topic:
+        unit = db.query(Unit).filter(Unit.title.ilike(f"%{data.topic.strip()}%")).first()
+
+    if not unit:
+        assignments = db.query(Assignment).filter(Assignment.classroom_id.in_(classroom_ids), Assignment.status == "active").all()
+        for a in assignments:
+            ver = db.query(AssetVersion).filter(AssetVersion.id == a.asset_version_id).first()
+            if ver:
+                asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
+                if asset:
+                    unit = db.query(Unit).filter(Unit.id == asset.unit_id).first()
+                    if unit:
+                        break
+
+    if not unit:
+        raise HTTPException(status_code=404, detail="No assigned pack topic found for diagnostic test.")
+
+    source = db.query(Source).filter(Source.id == unit.source_id).first()
+    latest_source_version = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).order_by(SourceVersion.version_no.desc()).first() if source else None
+
+    chunks = []
+    if latest_source_version:
+        chunk_recs = db.query(Chunk).filter(Chunk.source_version_id == latest_source_version.id).order_by(Chunk.chunk_index.asc()).all()
+        chunks = [{"id": c.id, "chunk_index": c.chunk_index, "text": c.text} for c in chunk_recs]
+
+    objectives = db.query(Objective).filter(Objective.unit_id == unit.id).all()
+    obj_texts = [o.text for o in objectives] if objectives else [f"Mastery of {unit.title} concepts and mechanisms"]
+    primary_obj = " · ".join(obj_texts[:2])
+
+    glossary_recs = db.query(Glossary).filter(Glossary.unit_id == unit.id).all()
+    glossary = [{"term": g.term, "canonical_wording": g.canonical_wording} for g in glossary_recs]
+
+    per_tier = data.questions_per_tier or 3
+    result = generate_diagnostic_pool(
+        objective_text=primary_obj,
+        chunks=chunks,
+        glossary=glossary,
+        questions_per_tier=per_tier
+    )
+
+    return {
+        "unit_id": unit.id,
+        "topic": unit.title,
+        "unit_title": unit.title,
+        "questions_per_tier": result.get("questions_per_tier", per_tier),
+        "total_pool_count": result.get("total_pool_count", 0),
+        "pools": result.get("pools", {}),
+        "all_questions": result.get("all_questions", []),
+        "generated_by": "Gemini AI CAT Diagnostic Engine",
+        "created_at": datetime.utcnow().isoformat()
+    }
+
+
+@router.post("/self-paced/diagnostic-evaluate")
+def evaluate_adaptive_diagnostic(
+    data: DiagnosticEvaluateRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    """
+    Evaluates dynamic adaptive test answers, computing difficulty tier breakdown (Easy/Medium/Hard),
+    identifying Strong Areas, Areas to Improve, and Areas to Build Strength.
+    """
+    history = data.answers_history or []
+    if not history:
+        raise HTTPException(status_code=400, detail="No answer history provided for evaluation.")
+
+    easy_correct, easy_total = 0, 0
+    med_correct, med_total = 0, 0
+    hard_correct, hard_total = 0, 0
+
+    topic_stats = {}  # topic -> { correct, total, wrong_stems: [], tiers: [] }
+
+    for h in history:
+        tier = str(h.get("difficulty_tier", "Medium")).strip().capitalize()
+        is_corr = bool(h.get("is_correct", False))
+        topic = str(h.get("concept_topic") or h.get("topic") or "General Core Concept").strip()
+
+        if topic not in topic_stats:
+            topic_stats[topic] = {"correct": 0, "total": 0, "wrong_stems": [], "tiers": set()}
+        topic_stats[topic]["total"] += 1
+        topic_stats[topic]["tiers"].add(tier)
+        if is_corr:
+            topic_stats[topic]["correct"] += 1
+        else:
+            stem = h.get("question_stem") or h.get("stem") or ""
+            rationale = h.get("rationale") or ""
+            topic_stats[topic]["wrong_stems"].append({
+                "stem": stem,
+                "selected": h.get("selected_option"),
+                "correct": h.get("correct_option"),
+                "rationale": rationale
+            })
+
+        if tier == "Easy":
+            easy_total += 1
+            if is_corr: easy_correct += 1
+        elif tier == "Medium":
+            med_total += 1
+            if is_corr: med_correct += 1
+        elif tier == "Hard":
+            hard_total += 1
+            if is_corr: hard_correct += 1
+
+    easy_pct = round((easy_correct / max(1, easy_total)) * 100)
+    med_pct = round((med_correct / max(1, med_total)) * 100)
+    hard_pct = round((hard_correct / max(1, hard_total)) * 100)
+    total_q = easy_total + med_total + hard_total
+    total_corr = easy_correct + med_correct + hard_correct
+    overall_pct = round((total_corr / max(1, total_q)) * 100)
+
+    # Determine mastery level
+    if hard_total > 0 and hard_pct >= 66 and med_pct >= 75 and easy_pct >= 80:
+        level_key = "master"
+        level_title = "Master / Expert"
+        level_badge = "🏆 Master"
+        level_desc = "Outstanding performance across all cognitive tiers. You have mastered core facts, practical scenarios, and complex edge-case evaluations."
+    elif (hard_total > 0 and hard_pct >= 33 and med_pct >= 60) or (med_pct >= 80 and easy_pct >= 85):
+        level_key = "advanced"
+        level_title = "Advanced / Proficient"
+        level_badge = "🚀 Advanced"
+        level_desc = "Strong analytical grasp and reliable problem solving. You navigate intermediate and advanced challenges with consistent reasoning."
+    elif med_pct >= 50 or easy_pct >= 75:
+        level_key = "intermediate"
+        level_title = "Intermediate / Competent"
+        level_badge = "⚡ Intermediate"
+        level_desc = "Solid conceptual foundation in core topics. You solve foundational and direct application questions well, but need more practice on multi-step and hard edge cases."
+    else:
+        level_key = "foundational"
+        level_title = "Foundational / Beginner"
+        level_badge = "🌱 Foundational"
+        level_desc = "Building early mastery. Prioritize reviewing key definitions, textbook glossary terms, and step-by-step worked solutions in the study packs."
+
+    strong_areas = []
+    improve_areas = []
+    build_areas = []
+
+    for topic, stats in topic_stats.items():
+        t_corr, t_tot = stats["correct"], stats["total"]
+        pct = round((t_corr / max(1, t_tot)) * 100)
+        tiers_list = list(stats["tiers"])
+
+        if pct >= 75:
+            strong_areas.append({
+                "topic": topic,
+                "score": f"{t_corr}/{t_tot}",
+                "percent": pct,
+                "tiers": tiers_list,
+                "feedback": f"Strong conceptual confidence demonstrated ({pct}% accuracy)."
+            })
+        elif pct < 50:
+            improve_areas.append({
+                "topic": topic,
+                "score": f"{t_corr}/{t_tot}",
+                "percent": pct,
+                "tiers": tiers_list,
+                "mistakes": stats["wrong_stems"][:2],
+                "feedback": f"Requires targeted review. {t_tot - t_corr} of {t_tot} questions were missed."
+            })
+        else:
+            build_areas.append({
+                "topic": topic,
+                "score": f"{t_corr}/{t_tot}",
+                "percent": pct,
+                "tiers": tiers_list,
+                "feedback": f"Partial mastery ({pct}% accuracy). Practice medium application scenarios to reinforce consistency."
+            })
+
+    # Ensure at least some constructive feedback if small sample
+    if not strong_areas and overall_pct >= 50:
+        strong_areas.append({
+            "topic": data.unit_title or "Foundational Topic Knowledge",
+            "score": f"{total_corr}/{total_q}",
+            "percent": overall_pct,
+            "tiers": ["Easy", "Medium"],
+            "feedback": "Consistent foundational rule recall across multiple questions."
+        })
+
+    return {
+        "unit_id": data.unit_id,
+        "unit_title": data.unit_title or "Diagnostic Topic",
+        "evaluated_at": datetime.utcnow().isoformat(),
+        "overall_score": {
+            "correct": total_corr,
+            "total": total_q,
+            "percent": overall_pct
+        },
+        "level": {
+            "key": level_key,
+            "title": level_title,
+            "badge": level_badge,
+            "description": level_desc
+        },
+        "tier_breakdown": {
+            "easy": {"correct": easy_correct, "total": easy_total, "percent": easy_pct},
+            "medium": {"correct": med_correct, "total": med_total, "percent": med_pct},
+            "hard": {"correct": hard_correct, "total": hard_total, "percent": hard_pct}
+        },
+        "strong_areas": strong_areas,
+        "improve_areas": improve_areas,
+        "build_areas": build_areas,
+        "recommendation": f"Focus upcoming practice on: {', '.join([a['topic'] for a in improve_areas[:2]]) if improve_areas else 'maintaining advanced mastery with hard challenge sets.'}"
+    }
+
 
 
 @router.post("/assignments/submit")
@@ -740,17 +995,28 @@ def get_student_help_requests(
     for r in requests_list:
         obj = db.query(Objective).filter(Objective.id == r.objective_id).first() if r.objective_id else None
         c = db.query(Classroom).filter(Classroom.id == r.classroom_id).first()
+        u = db.query(Unit).filter(Unit.id == r.unit_id).first() if r.unit_id else None
         res.append({
             "id": r.id,
             "classroom_id": r.classroom_id,
             "classroom_name": c.name if c else "",
+            "classroom_subject": c.subject if c else "",
+            "unit_id": r.unit_id,
+            "unit_title": u.title if u else None,
             "objective_id": r.objective_id,
             "objective_text": obj.text if obj else None,
             "question_text": r.question_text,
             "details": r.details,
             "status": r.status,
             "created_at": r.created_at.isoformat(),
-            "responses_count": len(r.responses)
+            "responses_count": len(r.responses),
+            "responses": [{
+                "id": resp.id,
+                "user_name": resp.user.name if resp.user else "Instructor",
+                "user_role": resp.user.role if resp.user else "teacher",
+                "message": resp.message,
+                "created_at": resp.created_at.isoformat()
+            } for resp in r.responses]
         })
     return res
 

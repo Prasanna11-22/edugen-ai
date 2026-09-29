@@ -46,6 +46,7 @@ class Enrollment(Base):
     student_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     classroom_id = Column(Integer, ForeignKey("classrooms.id"), nullable=False)
     joined_at = Column(DateTime, default=datetime.datetime.utcnow)
+    status = Column(String(30), default="approved") # pending, approved, rejected
     
     student = relationship("User", back_populates="enrollments")
     classroom = relationship("Classroom", back_populates="enrollments")
@@ -62,7 +63,7 @@ class Source(Base):
     teacher = relationship("User", back_populates="sources")
     versions = relationship("SourceVersion", back_populates="source", cascade="all, delete-orphan")
     units = relationship("Unit", back_populates="source")
-    pages = relationship("SourcePage", back_populates="source", cascade="all, delete-orphan")
+    pages = relationship("SourcePage", back_populates="source", cascade="all, delete-orphan", order_by="SourcePage.page_number.asc()")
 
 
 class SourceVersion(Base):
@@ -77,7 +78,7 @@ class SourceVersion(Base):
     
     source = relationship("Source", back_populates="versions")
     chunks = relationship("Chunk", back_populates="source_version", cascade="all, delete-orphan")
-    pages = relationship("SourcePage", back_populates="source_version", cascade="all, delete-orphan")
+    pages = relationship("SourcePage", back_populates="source_version", cascade="all, delete-orphan", order_by="SourcePage.page_number.asc()")
 
 
 class Chunk(Base):
@@ -162,6 +163,7 @@ class AssetVersion(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     approved_at = Column(DateTime, nullable=True)
     approved_by = Column(Integer, nullable=True)
+    low_confidence = Column(Boolean, default=False)
     
     asset = relationship("Asset", back_populates="versions")
     quality_flags = relationship("QualityFlag", back_populates="asset_version", cascade="all, delete-orphan")
@@ -314,12 +316,12 @@ class SourcePage(Base):
     teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     page_number = Column(Integer, nullable=False, default=1)
     image_path = Column(String(300), nullable=True)
-    raw_text = Column(Text, nullable=False, default="")
-    cleaned_text = Column(Text, nullable=False, default="")
-    ocr_provider = Column(String(50), default="gemini_vision") # gemini_vision or google_cloud_vision
-    review_status = Column(String(30), default="auto_approved") # needs_review, auto_approved, approved, rejected
-    uncertain_spans_json = Column(Text, default="[]") # JSON list of uncertain spans
-    confidence_score = Column(Float, nullable=True)
+    ocr_raw_text = Column(Text, nullable=False, default="")
+    reviewed_text = Column(Text, nullable=True)
+    confidence_score = Column(Float, nullable=True, default=1.0)
+    review_status = Column(String(30), default="auto_accepted", nullable=False) # auto_accepted, needs_review, reviewed
+    uncertain_spans_json = Column(Text, default="[]") # JSON list of uncertain words/spans
+    ocr_provider = Column(String(50), default="gemini_vision")
     reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     teacher_notes = Column(Text, nullable=True)
@@ -332,4 +334,15 @@ class SourcePage(Base):
     reviewer = relationship("User", foreign_keys=[reviewed_by])
 
 
+class ValidationFlag(Base):
+    __tablename__ = "validation_flags"
 
+    id = Column(Integer, primary_key=True, index=True)
+    target_type = Column(String(50), nullable=False) # objective, glossary_term, ocr_correction, asset_edit
+    target_id = Column(String(100), nullable=True)
+    original_value = Column(Text, nullable=False)
+    suggested_value = Column(Text, nullable=True)
+    reason = Column(Text, nullable=False)
+    resolution = Column(String(50), default="unresolved") # used_suggestion, kept_original, edited_manually, unresolved
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)

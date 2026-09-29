@@ -37,7 +37,6 @@ app.include_router(teacher_router.router)
 app.include_router(student_router.router)
 app.include_router(eval_router.router)
 app.include_router(ocr_router.router)
-app.include_router(ocr_router.router, prefix="/api/teacher")
 
 @app.get("/")
 def root():

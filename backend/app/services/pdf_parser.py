@@ -1,92 +1,10 @@
 import io
 import re
-from typing import Optional, Tuple
+from typing import Optional
 from pypdf import PdfReader
-from PIL import Image, ImageOps, ImageEnhance
-from .gemini_service import call_gemini_vision
-
-def optimize_image_for_ocr(image_bytes: bytes, max_dimension: int = 2048) -> Tuple[bytes, str]:
-    """
-    Optimizes and auto-orients images (mobile captures, scans, photos) for maximum OCR accuracy.
-    - Corrects EXIF orientation so sideways smartphone images are right-side up.
-    - Converts all color modes (RGBA, CMYK, P) to clean RGB.
-    - Resizes high-megapixel photos to max 2048px to prevent payload timeouts while retaining crisp text.
-    - Mild contrast enhancement to bring out faint pencil or pen handwriting.
-    """
-    if not image_bytes:
-        return image_bytes, "image/jpeg"
-    try:
-        img = Image.open(io.BytesIO(image_bytes))
-        img = ImageOps.exif_transpose(img)
-        
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        elif img.mode == "RGBA":
-            img = img.convert("RGB")
-
-        w, h = img.size
-        if max(w, h) > max_dimension:
-            scale = max_dimension / max(w, h)
-            new_size = (int(w * scale), int(h * scale))
-            img = img.resize(new_size, Image.Resampling.LANCZOS)
-
-        enhancer = ImageEnhance.Contrast(img)
-        img = enhancer.enhance(1.15)
-
-        out_buf = io.BytesIO()
-        img.save(out_buf, format="JPEG", quality=88, optimize=True)
-        return out_buf.getvalue(), "image/jpeg"
-    except Exception as e:
-        print(f"[Image Optimizer Warning] {e}")
-        return image_bytes, "image/jpeg"
-
-def extract_text_from_file_or_image(file_bytes: bytes, filename: str) -> str:
-    """
-    Unified extraction pipeline supporting PDF, text, and handwritten/scanned images
-    (.png, .jpg, .jpeg, .webp, .bmp, .tiff, .heic) with automatic multimodal vision OCR fallback.
-    """
-    if not file_bytes:
-        return ""
-        
-    fn_lower = filename.lower() if filename else ""
-
-    # 1. Direct Image Formats (Handwritten notebook photos, whiteboard captures, scanned pages)
-    image_exts = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-        ".bmp": "image/bmp",
-        ".tiff": "image/tiff",
-        ".heic": "image/heic",
-        ".heif": "image/heif"
-    }
-
-    matched_ext = next((ext for ext in image_exts if fn_lower.endswith(ext)), None)
-    if matched_ext:
-        opt_bytes, opt_mime = optimize_image_for_ocr(file_bytes)
-        ocr_text = call_gemini_vision(opt_bytes, mime_type=opt_mime)
-        if ocr_text:
-            return clean_extracted_text(ocr_text)
-        return ""
-
-    # 2. PDF Documents (Embedded text or Scanned/Handwritten PDF)
-    if fn_lower.endswith(".pdf"):
-        return extract_text_from_pdf(file_bytes)
-
-    # 3. Plain Text Fallback
-    try:
-        decoded = file_bytes.decode("utf-8")
-        return clean_extracted_text(decoded)
-    except Exception:
-        try:
-            decoded = file_bytes.decode("latin-1", errors="ignore")
-            return clean_extracted_text(decoded)
-        except Exception:
-            return ""
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract clean text from PDF bytes; automatically falls back to multimodal Vision OCR if scanned/handwritten."""
+    """Extract clean, substantive text from PDF bytes with layout-aware normalization and metadata stripping."""
     if not file_bytes:
         return ""
     try:
@@ -95,51 +13,43 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         pages_text = []
         for i, page in enumerate(reader.pages):
             try:
-                text = page.extract_text() or ""
-            except Exception:
+                text = page.extract_text()
+            except Exception as pe:
                 text = ""
             if text:
+                # Check if page is solely acknowledgment / title / license boilerplate
                 lower_text = text.lower()
                 if i < 3 and ("acknowledgments" in lower_text or "creative commons" in lower_text or "zero textbook cost" in lower_text):
                     continue
                 pages_text.append(text)
-                
-        full_text = "\n\n".join(pages_text)
-        cleaned = clean_extracted_text(full_text)
-        
-        # If PDF is scanned or handwritten, embedded text is empty or very short (< 40 chars)
-        if len(cleaned.strip()) < 40:
-            print("[PDF Parser] Scanned or handwritten PDF detected. Extracting embedded images or running multimodal Vision OCR...")
-            
-            # Check for embedded page images in PDF
-            extracted_img_texts = []
-            try:
-                for p_idx, page in enumerate(reader.pages):
-                    for img_obj in getattr(page, "images", []):
-                        opt_img, opt_mime = optimize_image_for_ocr(img_obj.data)
-                        page_ocr = call_gemini_vision(opt_img, mime_type=opt_mime)
-                        if page_ocr and len(page_ocr.strip()) > 5:
-                            extracted_img_texts.append(page_ocr.strip())
-            except Exception as img_err:
-                print(f"[PDF Image Extraction Note] {img_err}")
-                
-            if extracted_img_texts:
-                return clean_extracted_text("\n\n".join(extracted_img_texts))
+        # If no digital text found, this is a scanned PDF -> perform OCR on page images
+        if not pages_text:
+            from .ocr_service import process_pages_batch_concurrent
+            pages_input = []
+            for i, page in enumerate(reader.pages):
+                img_data = b""
+                mime = "image/jpeg"
+                if hasattr(page, "images") and len(page.images) > 0:
+                    best_img = max(page.images, key=lambda img: len(img.data))
+                    img_data = best_img.data
+                    mime = "image/jpeg" if ("jpg" in best_img.name.lower() or "jpeg" in best_img.name.lower()) else "image/png"
+                if img_data:
+                    pages_input.append({
+                        "page_number": i + 1,
+                        "image_bytes": img_data,
+                        "mime_type": mime
+                    })
+            if pages_input:
+                ocr_results = process_pages_batch_concurrent(pages_input, max_workers=min(10, len(pages_input)))
+                for res in ocr_results:
+                    txt = res.get("reviewed_text") or res.get("ocr_raw_text") or ""
+                    if txt.strip():
+                        pages_text.append(txt.strip())
 
-            # Fallback directly passing PDF
-            vision_text = call_gemini_vision(file_bytes, mime_type="application/pdf")
-            if vision_text and len(vision_text.strip()) > 5:
-                return clean_extracted_text(vision_text)
-                
-        return cleaned
+        full_text = "\n\n".join(pages_text)
+        return clean_extracted_text(full_text)
     except Exception as e:
-        print(f"[PDF Parser Error] {e}. Trying multimodal Vision OCR...")
-        try:
-            vision_text = call_gemini_vision(file_bytes, mime_type="application/pdf")
-            if vision_text:
-                return clean_extracted_text(vision_text)
-        except Exception:
-            pass
+        print(f"[PDF Parser Error] {e}")
         return ""
 
 def clean_extracted_text(text: str) -> str:

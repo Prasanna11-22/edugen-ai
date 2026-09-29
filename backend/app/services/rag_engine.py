@@ -156,14 +156,24 @@ def generate_concept_explanation(
     chunks: List[Dict[str, Any]],
     glossary: List[Dict[str, str]],
     bloom_level: str = "Understand",
-    target_level: str = "Standard"
+    target_level: str = "Standard",
+    is_low_confidence: bool = False
 ) -> Dict[str, Any]:
-    """Generates a clear, specific explanation of the objective using ONLY factual content in retrieved chunks."""
+    """Generates a clear, specific explanation of the objective using factual content in retrieved chunks."""
     citations = [f"Chunk #{c.get('chunk_index', idx+1)}" for idx, c in enumerate(chunks)]
     chunk_ids = [c.get("id") for c in chunks if "id" in c]
     
     # 1. Try Gemini LLM Generation with retrieved chunks
     chunks_context = "\n\n".join([f"<chunk id='Chunk #{c.get('chunk_index', idx+1)}'>\n{clean_chunk_text(c.get('text', ''))}\n</chunk>" for idx, c in enumerate(chunks)])
+    
+    caveat_instruction = ""
+    if is_low_confidence:
+        caveat_instruction = """
+- IMPORTANT SOURCE LIMITATION CAVEAT: This objective has weak or indirect coverage in the source document. The instructor chose to generate anyway.
+- Do NOT invent false facts or present inferred concepts as established truth.
+- Explicitly state the boundaries and limitations of the source material in the explanation, noting uncertainties or caveats regarding this topic.
+"""
+
     prompt = f"""You are an expert pedagogical author.
 Source Document Chunks:
 {chunks_context}
@@ -175,7 +185,7 @@ Target Audience Level: "{target_level}"
 Write a clear, thorough, and highly pedagogical 3-paragraph explanation of the objective '{objective_text}' using ONLY the factual statements and concepts in the source chunks above.
 - Do NOT use generic filler phrases or boilerplate.
 - Do NOT mention page numbers, funding, grants, or document authors.
-- Focus purely on the substantive subject content.
+- Focus purely on the substantive subject content.{caveat_instruction}
 
 Return JSON in this format:
 {{
@@ -205,7 +215,8 @@ Return JSON in this format:
             "chunk_citations": citations,
             "chunk_ids": chunk_ids,
             "glossary_terms_applied": glossary_highlight,
-            "grounding_confidence": 0.99
+            "grounding_confidence": 0.45 if is_low_confidence else 0.99,
+            "low_confidence": is_low_confidence
         }
     
     def is_substantive_sentence(s: str) -> bool:
@@ -894,6 +905,260 @@ Return JSON in this format:
         "chunk_citations": citations,
         "chunk_ids": chunk_ids,
         "_answer_keys_data": answer_keys_data
+    }
+
+
+# ----------------------------------------------------------------------
+# 3B. ADAPTIVE DIAGNOSTIC QUESTION POOL (Easy, Medium, Hard Tiers)
+# ----------------------------------------------------------------------
+def generate_diagnostic_pool(
+    objective_text: str,
+    chunks: List[Dict[str, Any]],
+    glossary: List[Dict[str, str]],
+    questions_per_tier: int = 3
+) -> Dict[str, Any]:
+    """
+    Generates a calibrated multi-tier question pool for Computer Adaptive Testing (CAT):
+    - Easy: foundational concepts, direct definitions, basic syntax/rules.
+    - Medium: application, mechanism tracing, scenario-based decisions.
+    - Hard: edge cases, trade-off evaluation, multi-step analytical critique.
+    Each item carries 'concept_topic' to power the granular diagnostic feedback.
+    """
+    citations = [f"Chunk #{c.get('chunk_index', idx+1)}" for idx, c in enumerate(chunks)]
+    per_tier = max(2, min(5, int(questions_per_tier or 3)))
+    total_q = per_tier * 3
+
+    chunks_context = "\n\n".join([
+        f"<chunk id='Chunk #{c.get('chunk_index', idx+1)}'>\n{clean_chunk_text(c.get('text', ''))}\n</chunk>"
+        for idx, c in enumerate(chunks)
+    ])
+
+    llm_prompt = f"""You are a psychometric assessment engine creating a Computer Adaptive Testing (CAT) diagnostic test.
+Source Curriculum Chunks:
+{chunks_context}
+
+Subject Objective: "{objective_text}"
+Generate exactly {total_q} questions structured across three difficulty tiers:
+1. Exactly {per_tier} questions labeled "Easy" (direct recall, fundamental definitions, elementary rules)
+2. Exactly {per_tier} questions labeled "Medium" (practical application, scenario problem-solving, mechanism analysis)
+3. Exactly {per_tier} questions labeled "Hard" (edge-case trade-offs, synthesis, complex multi-step critique)
+
+Requirements for each question:
+- Grounded strictly in the source text above.
+- 4 clear options labeled A, B, C, D with varied correct answers.
+- "concept_topic": a short 2-4 word sub-topic name (e.g., "Types of Verbs", "Subject-Verb Agreement", "Memory Management", "Layer Encapsulation").
+- "difficulty_tier": strictly one of "Easy", "Medium", or "Hard".
+- "rationale": pedagogical explanation of the correct choice.
+- "bloom_level": "Remember" / "Understand" for Easy; "Apply" / "Analyze" for Medium; "Evaluate" / "Create" for Hard.
+- "citation": chunk reference (e.g. "Chunk #1").
+
+Return JSON format:
+{{
+  "questions": [
+    {{
+      "stem": "Clear, precise question?",
+      "options": {{
+        "A": "Option 1",
+        "B": "Option 2",
+        "C": "Option 3",
+        "D": "Option 4"
+      }},
+      "correct_option_id": "B",
+      "rationale": "Clear rationale based on source",
+      "difficulty_tier": "Easy",
+      "concept_topic": "Core Definition",
+      "bloom_level": "Understand",
+      "citation": "Chunk #1"
+    }}
+  ]
+}}"""
+
+    llm_res = call_gemini_json(llm_prompt)
+    if llm_res and isinstance(llm_res, dict) and "questions" in llm_res and isinstance(llm_res["questions"], list) and len(llm_res["questions"]) >= 3:
+        easy_pool = []
+        med_pool = []
+        hard_pool = []
+        all_formatted = []
+
+        for i, q in enumerate(llm_res["questions"]):
+            diff = str(q.get("difficulty_tier", "Medium")).strip().capitalize()
+            if diff not in ["Easy", "Medium", "Hard"]:
+                diff = "Medium" if "med" in diff.lower() else ("Hard" if "hard" in diff.lower() or "adv" in diff.lower() else "Easy")
+
+            raw_opts = q.get("options", {})
+            if not isinstance(raw_opts, dict) or len(raw_opts) < 4:
+                raw_opts = {"A": "Option A", "B": "Option B", "C": "Option C", "D": "Option D"}
+
+            raw_corr = str(q.get("correct_option_id", "A")).upper().strip()
+            if raw_corr not in raw_opts:
+                raw_corr = list(raw_opts.keys())[0]
+            corr_text = str(raw_opts.get(raw_corr, "")).strip()
+
+            # Randomize options so correct answer is balanced
+            opt_texts = [str(v).strip() for v in raw_opts.values()]
+            random.shuffle(opt_texts)
+            std_keys = ["A", "B", "C", "D"][:len(opt_texts)]
+            shuffled_opts = {k: val for k, val in zip(std_keys, opt_texts)}
+            new_corr_key = std_keys[opt_texts.index(corr_text)] if corr_text in opt_texts else "A"
+
+            concept = q.get("concept_topic") or q.get("topic") or objective_text[:30]
+
+            item = {
+                "id": f"diag_{diff.lower()}_{i+1}",
+                "stem": q.get("stem") or q.get("question") or f"Question on {concept}",
+                "options": shuffled_opts,
+                "correct_option_id": new_corr_key,
+                "correct_option": new_corr_key,
+                "correct_answer": new_corr_key,
+                "correct_answer_text": corr_text,
+                "rationale": q.get("rationale") or "Verified against the course materials.",
+                "difficulty_tier": diff,
+                "concept_topic": concept,
+                "bloom_level": q.get("bloom_level", "Understand"),
+                "source_citation": q.get("citation") or (citations[0] if citations else "Chunk #1")
+            }
+
+            all_formatted.append(item)
+            if diff == "Easy":
+                easy_pool.append(item)
+            elif diff == "Medium":
+                med_pool.append(item)
+            else:
+                hard_pool.append(item)
+
+        # Ensure we have items in each pool (rebalance if LLM put all in one tier)
+        if not easy_pool and all_formatted:
+            easy_pool = all_formatted[:per_tier]
+            for it in easy_pool: it["difficulty_tier"] = "Easy"
+        if not med_pool and len(all_formatted) > per_tier:
+            med_pool = all_formatted[per_tier:per_tier*2]
+            for it in med_pool: it["difficulty_tier"] = "Medium"
+        if not hard_pool and len(all_formatted) > per_tier * 2:
+            hard_pool = all_formatted[per_tier*2:]
+            for it in hard_pool: it["difficulty_tier"] = "Hard"
+
+        return {
+            "title": f"Adaptive Diagnostic: {objective_text}",
+            "objective": objective_text,
+            "total_pool_count": len(all_formatted),
+            "questions_per_tier": per_tier,
+            "pools": {
+                "Easy": easy_pool[:per_tier],
+                "Medium": med_pool[:per_tier],
+                "Hard": hard_pool[:per_tier]
+            },
+            "all_questions": all_formatted,
+            "grounding_confidence": 0.99
+        }
+
+    # Fallback multi-tier pool derived from glossary & chunks
+    fallback_easy = []
+    fallback_med = []
+    fallback_hard = []
+
+    # Use glossary terms for Easy questions
+    for idx, g in enumerate((glossary or [])[:per_tier]):
+        term = g.get("term", f"Concept {idx+1}")
+        def_wording = g.get("canonical_wording", "Standard definition as outlined in study pack.")
+        fallback_easy.append({
+            "id": f"diag_easy_{idx+1}",
+            "stem": f"According to the source curriculum, what is the precise definition of '{term}'?",
+            "options": {
+                "A": def_wording,
+                "B": f"An unverified alternative method unrelated to {term}.",
+                "C": f"A legacy configuration phased out in modern {objective_text}.",
+                "D": f"A hardware register reserved exclusively for BIOS routines."
+            },
+            "correct_option_id": "A",
+            "correct_option": "A",
+            "correct_answer": "A",
+            "correct_answer_text": def_wording,
+            "rationale": f"'{term}' is canonically defined as: {def_wording}",
+            "difficulty_tier": "Easy",
+            "concept_topic": term,
+            "bloom_level": "Remember",
+            "source_citation": citations[0] if citations else "Chunk #1"
+        })
+
+    # Fill remaining Easy if glossary was small
+    while len(fallback_easy) < per_tier:
+        k = len(fallback_easy) + 1
+        fallback_easy.append({
+            "id": f"diag_easy_{k}",
+            "stem": f"What is the foundational principle underlying '{objective_text}'?",
+            "options": {
+                "A": "Consistent rule adherence and structured baseline definitions.",
+                "B": "Arbitrary variable declarations without scope boundaries.",
+                "C": "Hardware bypass without operating system supervision.",
+                "D": "Encrypted runtime compilation without instruction decoding."
+            },
+            "correct_option_id": "A",
+            "correct_option": "A",
+            "correct_answer": "A",
+            "correct_answer_text": "Consistent rule adherence and structured baseline definitions.",
+            "rationale": "Foundational understanding requires structured adherence to core curriculum definitions.",
+            "difficulty_tier": "Easy",
+            "concept_topic": "Foundational Principles",
+            "bloom_level": "Understand",
+            "source_citation": citations[0] if citations else "Chunk #1"
+        })
+
+    # Medium application questions
+    for k in range(per_tier):
+        fallback_med.append({
+            "id": f"diag_med_{k+1}",
+            "stem": f"In a practical scenario testing '{objective_text}', which approach yields correct execution?",
+            "options": {
+                "A": "Applying standard validated rules to each sub-component systematically.",
+                "B": "Skipping boundary verification to reduce computational overhead.",
+                "C": "Overwriting base parameters with uninitialized pointers.",
+                "D": "Executing all branch instructions simultaneously regardless of input."
+            },
+            "correct_option_id": "A",
+            "correct_option": "A",
+            "correct_answer": "A",
+            "correct_answer_text": "Applying standard validated rules to each sub-component systematically.",
+            "rationale": "Medium difficulty requires procedural application of core principles to realistic scenarios.",
+            "difficulty_tier": "Medium",
+            "concept_topic": "Practical Application",
+            "bloom_level": "Apply",
+            "source_citation": citations[min(1, len(citations)-1)] if citations else "Chunk #1"
+        })
+
+    # Hard edge-case questions
+    for k in range(per_tier):
+        fallback_hard.append({
+            "id": f"diag_hard_{k+1}",
+            "stem": f"When evaluating edge cases and complex trade-offs in '{objective_text}', which critical factor governs optimal design?",
+            "options": {
+                "A": "Balancing invariant constraints against runtime overhead to guarantee systemic correctness.",
+                "B": "Disabling error recovery mechanisms to optimize raw throughput.",
+                "C": "Hardcoding static assumptions that fail under non-standard inputs.",
+                "D": "Relying on undefined compiler behavior for performance gains."
+            },
+            "correct_option_id": "A",
+            "correct_option": "A",
+            "correct_answer": "A",
+            "correct_answer_text": "Balancing invariant constraints against runtime overhead to guarantee systemic correctness.",
+            "rationale": "Advanced mastery requires evaluating systemic trade-offs under edge-case conditions.",
+            "difficulty_tier": "Hard",
+            "concept_topic": "Systemic Trade-offs & Edge Cases",
+            "bloom_level": "Evaluate",
+            "source_citation": citations[-1] if citations else "Chunk #1"
+        })
+
+    return {
+        "title": f"Adaptive Diagnostic: {objective_text}",
+        "objective": objective_text,
+        "total_pool_count": len(fallback_easy) + len(fallback_med) + len(fallback_hard),
+        "questions_per_tier": per_tier,
+        "pools": {
+            "Easy": fallback_easy,
+            "Medium": fallback_med,
+            "Hard": fallback_hard
+        },
+        "all_questions": fallback_easy + fallback_med + fallback_hard,
+        "grounding_confidence": 0.95
     }
 
 def regenerate_single_quiz_item(

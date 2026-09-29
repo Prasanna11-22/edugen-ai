@@ -29,7 +29,17 @@ import {
   RotateCcw,
   Zap,
   CheckSquare,
-  Send
+  Send,
+  TrendingUp,
+  TrendingDown,
+  Trophy,
+  BarChart3,
+  Flame,
+  ShieldAlert,
+  MessageSquarePlus,
+  MessageSquare,
+  FileQuestion,
+  MessageCircle
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -43,7 +53,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   const [allData, setAllData] = useState({ assignments: [], materials: [] });
   const [loading, setLoading] = useState(true);
 
-  // Self-Paced AI Test Generator State
+  // Self-Paced AI Test Generator State (Standard Mode)
   const [selfPacedTopics, setSelfPacedTopics] = useState([]);
   const [selectedTopicUnitId, setSelectedTopicUnitId] = useState('');
   const [selectedDifficulty, setSelectedDifficulty] = useState('Medium');
@@ -51,11 +61,59 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   const [selectedBloomLevel, setSelectedBloomLevel] = useState('Apply');
   const [generatingSelfPaced, setGeneratingSelfPaced] = useState(false);
   
-  // Active Generated Self-Paced Test Session
+  // Active Generated Self-Paced Test Session (Standard Mode)
   const [activeSelfPacedTest, setActiveSelfPacedTest] = useState(null);
   const [selfPacedAnswers, setSelfPacedAnswers] = useState({});
   const [selfPacedSubmitted, setSelfPacedSubmitted] = useState(false);
   const [revealedSolutions, setRevealedSolutions] = useState({});
+
+  // Dynamic Computer-Adaptive Diagnostic Engine (CAT Mode)
+  const [practiceSubTab, setPracticeSubTab] = useState('diagnostic'); // 'diagnostic' | 'custom'
+  const [generatingDiagnostic, setGeneratingDiagnostic] = useState(false);
+  const [adaptiveActive, setAdaptiveActive] = useState(false);
+  const [adaptiveUnitId, setAdaptiveUnitId] = useState('');
+  const [adaptiveUnitTitle, setAdaptiveUnitTitle] = useState('');
+  const [adaptivePool, setAdaptivePool] = useState({ Easy: [], Medium: [], Hard: [] });
+  const [adaptiveServedIds, setAdaptiveServedIds] = useState([]);
+  const [adaptiveCurrentTier, setAdaptiveCurrentTier] = useState('Easy'); // 'Easy' | 'Medium' | 'Hard'
+  const [adaptiveQuestion, setAdaptiveQuestion] = useState(null);
+  const [adaptiveSelectedOpt, setAdaptiveSelectedOpt] = useState(null);
+  const [adaptiveAnswered, setAdaptiveAnswered] = useState(false);
+  const [adaptiveHistory, setAdaptiveHistory] = useState([]);
+  const [adaptiveConsecutiveCorrect, setAdaptiveConsecutiveCorrect] = useState(0);
+  const [adaptiveConsecutiveWrong, setAdaptiveConsecutiveWrong] = useState(0);
+  const [adaptiveEvent, setAdaptiveEvent] = useState(null); // { type: 'up' | 'down', message: '' }
+  const [adaptiveFinished, setAdaptiveFinished] = useState(false);
+  const [adaptiveEvaluation, setAdaptiveEvaluation] = useState(null);
+  const [evaluatingReport, setEvaluatingReport] = useState(false);
+  const [savedProfileReport, setSavedProfileReport] = useState(null);
+  const [adaptiveQuestionNum, setAdaptiveQuestionNum] = useState(1);
+
+  // Student Course Notes & Material Requests State
+  const [studentRequests, setStudentRequests] = useState([]);
+  const [loadingStudentRequests, setLoadingStudentRequests] = useState(false);
+  const [showCreateRequestModal, setShowCreateRequestModal] = useState(false);
+  const [requestClassroomId, setRequestClassroomId] = useState('');
+  const [requestUnitId, setRequestUnitId] = useState('');
+  const [requestCategoryType, setRequestCategoryType] = useState('Course Notes Request');
+  const [requestTitle, setRequestTitle] = useState('');
+  const [requestDetails, setRequestDetails] = useState('');
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [studentRequestFilter, setStudentRequestFilter] = useState('all'); // 'all', 'open', 'resolved'
+
+  // Load persistent diagnostic profile report from localStorage on mount
+  useEffect(() => {
+    if (user?.id) {
+      try {
+        const saved = localStorage.getItem(`student_diagnostic_report_${user.id}`);
+        if (saved) {
+          setSavedProfileReport(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error("Failed to load saved diagnostic report:", e);
+      }
+    }
+  }, [user?.id]);
 
   // Join Classroom Modal
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -112,6 +170,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   useEffect(() => {
     fetchStudentClassrooms();
     fetchSelfPacedTopics();
+    fetchStudentRequests();
   }, []);
 
   const fetchStudentClassrooms = async () => {
@@ -124,7 +183,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
         const data = await res.json();
         setClassrooms(data);
         if (data.length > 0) {
-          setSelectedClassId(data[0].classroom_id);
+          const firstApproved = data.find(c => c.status === 'approved');
+          setSelectedClassId(firstApproved ? firstApproved.classroom_id : data[0].classroom_id);
           fetchAllClassData(data);
         }
       }
@@ -156,8 +216,9 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     try {
       const allAssignments = [];
       const allMaterials = [];
+      const approvedClasses = (classList || []).filter(c => c.status === 'approved');
 
-      await Promise.all(classList.map(async (c) => {
+      await Promise.all(approvedClasses.map(async (c) => {
         const [aRes, mRes] = await Promise.all([
           fetch(`/api/student/assignments?classroom_id=${c.classroom_id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -202,15 +263,76 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Join failed');
       setJoinMessage(data.message);
-      showToast(data.message, "success");
+      showToast(data.message, data.status === 'approved' ? "success" : "info");
       setJoinCode('');
       await fetchStudentClassrooms();
       await fetchSelfPacedTopics();
-      setTimeout(() => setShowJoinModal(false), 1500);
+      setTimeout(() => setShowJoinModal(false), 2200);
     } catch (err) {
       showToast(err.message, "error");
     } finally {
       setJoining(false);
+    }
+  };
+
+  const fetchStudentRequests = async () => {
+    setLoadingStudentRequests(true);
+    try {
+      const res = await fetch('/api/student/requests', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStudentRequests(data);
+      }
+    } catch (err) {
+      console.error("Error fetching student requests", err);
+    } finally {
+      setLoadingStudentRequests(false);
+    }
+  };
+
+  const handleCreateStudentRequest = async (e) => {
+    if (e) e.preventDefault();
+    if (!requestClassroomId) {
+      showToast("Please choose a classroom / academic domain.", "error");
+      return;
+    }
+    if (!requestTitle.trim()) {
+      showToast("Please enter a note request title or topic.", "error");
+      return;
+    }
+
+    setSubmittingRequest(true);
+    try {
+      const fullQuestionText = `[${requestCategoryType}] ${requestTitle.trim()}`;
+      const res = await fetch('/api/student/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          classroom_id: Number(requestClassroomId),
+          unit_id: requestUnitId ? Number(requestUnitId) : null,
+          question_text: fullQuestionText,
+          details: requestDetails.trim() || null
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to submit request");
+
+      showToast("🎉 Course notes request submitted to your instructor!", "success");
+      setShowCreateRequestModal(false);
+      setRequestTitle('');
+      setRequestDetails('');
+      await fetchStudentRequests();
+      setSelectedCategory('requests');
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setSubmittingRequest(false);
     }
   };
 
@@ -283,6 +405,208 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     }
   };
 
+  // -------------------------------------------------------------
+  // COMPUTER-ADAPTIVE TESTING (CAT) DYNAMIC DIAGNOSTIC HANDLERS
+  // -------------------------------------------------------------
+  const handleStartAdaptiveDiagnostic = async (overrideUnitId = null) => {
+    const unitId = overrideUnitId || selectedTopicUnitId || (selfPacedTopics[0]?.unit_id);
+    if (!unitId) {
+      showToast("No pack topics available. Please join a classroom first.", "error");
+      return;
+    }
+    const topicObj = selfPacedTopics.find(t => String(t.unit_id) === String(unitId));
+    const title = topicObj?.title || "Curriculum Diagnostic";
+
+    setGeneratingDiagnostic(true);
+    setAdaptiveActive(false);
+    setAdaptiveFinished(false);
+    setAdaptiveEvaluation(null);
+
+    try {
+      const res = await fetch('/api/student/self-paced/diagnostic-pool', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          unit_id: Number(unitId),
+          questions_per_tier: 3 // 3 Easy, 3 Medium, 3 Hard = 9 total
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to generate diagnostic pool");
+
+      const pools = data.pools || { Easy: [], Medium: [], Hard: [] };
+      const easyQuestions = pools.Easy || [];
+      if (easyQuestions.length === 0 && (!data.all_questions || data.all_questions.length === 0)) {
+        throw new Error("Diagnostic questions could not be prepared for this topic.");
+      }
+
+      setAdaptivePool(pools);
+      setAdaptiveUnitId(unitId);
+      setAdaptiveUnitTitle(title);
+      setAdaptiveCurrentTier('Easy');
+      setAdaptiveConsecutiveCorrect(0);
+      setAdaptiveConsecutiveWrong(0);
+      setAdaptiveEvent(null);
+      setAdaptiveHistory([]);
+      setAdaptiveQuestionNum(1);
+
+      const firstQ = easyQuestions[0] || data.all_questions[0];
+      setAdaptiveQuestion(firstQ);
+      setAdaptiveServedIds([firstQ.id]);
+      setAdaptiveSelectedOpt(null);
+      setAdaptiveAnswered(false);
+      setAdaptiveActive(true);
+      setSelectedCategory('practice');
+      setPracticeSubTab('diagnostic');
+
+      showToast(`🎯 Dynamic Diagnostic Evaluation started for ${title}! Starting with foundational Easy questions.`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setGeneratingDiagnostic(false);
+    }
+  };
+
+  const handleSelectAdaptiveOption = (optKey) => {
+    if (adaptiveAnswered) return;
+    setAdaptiveSelectedOpt(optKey);
+  };
+
+  const handleVerifyAdaptiveAnswer = () => {
+    if (!adaptiveSelectedOpt || !adaptiveQuestion || adaptiveAnswered) return;
+
+    const isCorrect = String(adaptiveSelectedOpt).toUpperCase() === String(adaptiveQuestion.correct_option).toUpperCase();
+    setAdaptiveAnswered(true);
+
+    const historyItem = {
+      question_id: adaptiveQuestion.id,
+      stem: adaptiveQuestion.stem,
+      options: adaptiveQuestion.options,
+      selected_option: adaptiveSelectedOpt,
+      correct_option: adaptiveQuestion.correct_option,
+      correct_answer_text: adaptiveQuestion.correct_answer_text,
+      rationale: adaptiveQuestion.rationale,
+      difficulty_tier: adaptiveCurrentTier,
+      concept_topic: adaptiveQuestion.concept_topic || adaptiveUnitTitle,
+      is_correct: isCorrect
+    };
+
+    const newHistory = [...adaptiveHistory, historyItem];
+    setAdaptiveHistory(newHistory);
+
+    // Adaptive CAT Engine Logic
+    let nextTier = adaptiveCurrentTier;
+    let newConsecCorrect = isCorrect ? adaptiveConsecutiveCorrect + 1 : 0;
+    let newConsecWrong = !isCorrect ? adaptiveConsecutiveWrong + 1 : 0;
+    let event = null;
+
+    if (isCorrect) {
+      if (adaptiveCurrentTier === 'Easy' && newConsecCorrect >= 2) {
+        nextTier = 'Medium';
+        newConsecCorrect = 0;
+        event = { type: 'up', message: '🎉 2 Correct in a row! Elevating difficulty to Medium Tier ⬆️' };
+      } else if (adaptiveCurrentTier === 'Medium' && newConsecCorrect >= 2) {
+        nextTier = 'Hard';
+        newConsecCorrect = 0;
+        event = { type: 'up', message: '🚀 Outstanding mastery! Elevating to Hard / Advanced Tier ⬆️' };
+      }
+    } else {
+      if (adaptiveCurrentTier === 'Hard' && newConsecWrong >= 2) {
+        nextTier = 'Medium';
+        newConsecWrong = 0;
+        event = { type: 'down', message: '⬇️ 2 Missed in a row. Adapting difficulty to Medium to reinforce core concepts.' };
+      } else if (adaptiveCurrentTier === 'Medium' && newConsecWrong >= 2) {
+        nextTier = 'Easy';
+        newConsecWrong = 0;
+        event = { type: 'down', message: '⬇️ 2 Missed in a row. Adapting difficulty to Easy foundational tier.' };
+      }
+    }
+
+    setAdaptiveConsecutiveCorrect(newConsecCorrect);
+    setAdaptiveConsecutiveWrong(newConsecWrong);
+    setAdaptiveCurrentTier(nextTier);
+    setAdaptiveEvent(event);
+  };
+
+  const handleNextAdaptiveQuestion = () => {
+    // If we have answered 9 questions or reached target, finish
+    if (adaptiveHistory.length >= 9) {
+      handleFinishAdaptiveDiagnostic();
+      return;
+    }
+
+    // Find next unserved question in adaptiveCurrentTier
+    const poolForTier = adaptivePool[adaptiveCurrentTier] || [];
+    let nextQ = poolForTier.find(q => !adaptiveServedIds.includes(q.id));
+
+    // If active tier has no unserved questions left, look at adjacent tier
+    if (!nextQ) {
+      const allPools = [adaptivePool.Medium || [], adaptivePool.Hard || [], adaptivePool.Easy || []].flat();
+      nextQ = allPools.find(q => !adaptiveServedIds.includes(q.id));
+    }
+
+    if (!nextQ) {
+      // No more questions left in pool -> conclude test
+      handleFinishAdaptiveDiagnostic();
+      return;
+    }
+
+    setAdaptiveQuestion(nextQ);
+    setAdaptiveServedIds(prev => [...prev, nextQ.id]);
+    setAdaptiveSelectedOpt(null);
+    setAdaptiveAnswered(false);
+    setAdaptiveQuestionNum(prev => Math.min(9, prev + 1));
+  };
+
+  const handleFinishAdaptiveDiagnostic = async () => {
+    setEvaluatingReport(true);
+    try {
+      const res = await fetch('/api/student/self-paced/diagnostic-evaluate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          unit_id: adaptiveUnitId ? Number(adaptiveUnitId) : null,
+          unit_title: adaptiveUnitTitle,
+          answers_history: adaptiveHistory
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to evaluate diagnostic");
+
+      setAdaptiveEvaluation(data);
+      setSavedProfileReport(data);
+      if (user?.id) {
+        try {
+          localStorage.setItem(`student_diagnostic_report_${user.id}`, JSON.stringify(data));
+        } catch (e) {}
+      }
+      setAdaptiveFinished(true);
+      showToast(`🏆 Diagnostic complete! Your evaluated level: ${data.level?.title || 'Evaluated'}`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setEvaluatingReport(false);
+    }
+  };
+
+  const handleResetAdaptiveTest = () => {
+    setAdaptiveActive(false);
+    setAdaptiveFinished(false);
+    setAdaptiveEvaluation(null);
+    setAdaptiveHistory([]);
+    setAdaptiveQuestion(null);
+    setAdaptiveSelectedOpt(null);
+    setAdaptiveAnswered(false);
+    setAdaptiveEvent(null);
+    setAdaptiveQuestionNum(1);
+  };
+
   // Filter assignments: ONLY show assessments where the student has attempts remaining to attend
   const availableAssignments = (allData.assignments || []).filter(a => 
     a.can_attempt === true && 
@@ -296,6 +620,16 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   const displayedMaterials = selectedClassId === 'all'
     ? allData.materials
     : allData.materials.filter(m => m.classroom_id === selectedClassId);
+
+  const displayedRequests = (selectedClassId === 'all'
+    ? studentRequests
+    : studentRequests.filter(r => r.classroom_id === selectedClassId)
+  ).filter(r => {
+    if (studentRequestFilter === 'all') return true;
+    if (studentRequestFilter === 'open') return r.status === 'open' || r.status === 'in_progress';
+    if (studentRequestFilter === 'resolved') return r.status === 'resolved' || r.status === 'closed';
+    return true;
+  });
 
   const activeClassroom = classrooms.find(c => c.classroom_id === selectedClassId);
 
@@ -353,16 +687,161 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               <Clock className="w-3.5 h-3.5 text-neon-amber" />
               <span><strong>{displayedAssignments.length}</strong> Formative Tests</span>
             </div>
+            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5 font-mono">
+              <MessageSquarePlus className="w-3.5 h-3.5 text-purple-400" />
+              <span><strong>{studentRequests.length}</strong> Notes Requests</span>
+            </div>
           </div>
         </div>
 
-        <button
-          onClick={() => setShowJoinModal(true)}
-          className="btn-royal text-xs flex items-center gap-2 py-3 px-5 shadow-neon shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Join Classroom with Code
-        </button>
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <button
+            onClick={() => {
+              if (selectedClassId !== 'all' && !requestClassroomId) {
+                setRequestClassroomId(selectedClassId);
+              }
+              setShowCreateRequestModal(true);
+            }}
+            className="px-4 py-3 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold border border-purple-400/30 shadow-neon flex items-center gap-2 transition-all"
+          >
+            <MessageSquarePlus className="w-4 h-4" /> Request Course Notes
+          </button>
+          <button
+            onClick={() => setShowJoinModal(true)}
+            className="btn-royal text-xs flex items-center gap-2 py-3 px-5 shadow-neon shrink-0"
+          >
+            <Plus className="w-4 h-4" /> Join Classroom
+          </button>
+        </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* STUDENT SKILL PROFILE & ADAPTIVE EVALUATED LEVEL CARD */}
+      {/* ========================================================================= */}
+      {savedProfileReport ? (
+        <div className="rounded-3xl glass-panel-accent p-5 sm:p-6 border border-sky-500/40 shadow-neon bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex flex-col items-center justify-center text-white shadow-[0_0_20px_rgba(56,189,248,0.35)] shrink-0">
+              <Trophy className="w-6 h-6 text-white" />
+              <span className="text-[9px] font-mono font-bold uppercase mt-0.5">Rank</span>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1">
+                  <BrainCircuit className="w-3.5 h-3.5" /> Evaluated Student Skill Profile
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-dark-950 text-neon-amber border border-slate-700">
+                  {savedProfileReport.unit_title}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-black text-white">
+                  {savedProfileReport.level?.badge || "⚡ Intermediate"}
+                </h2>
+                <span className="text-xs font-mono text-slate-400">
+                  ({savedProfileReport.overall_score?.percent}% overall accuracy)
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 max-w-2xl line-clamp-2">
+                {savedProfileReport.level?.description}
+              </p>
+            </div>
+          </div>
+
+          {/* 3-Tier Metric Progress Bars */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-t lg:border-t-0 lg:border-l border-slate-800 pt-3 lg:pt-0 lg:pl-6 shrink-0">
+            <div className="grid grid-cols-3 gap-3 w-full sm:w-auto">
+              {/* Easy Bar */}
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+                <span className="text-[10px] font-mono text-emerald-400 uppercase font-bold block">Easy</span>
+                <span className="text-sm font-bold text-white font-mono">
+                  {savedProfileReport.tier_breakdown?.easy?.correct || 0}/{savedProfileReport.tier_breakdown?.easy?.total || 0}
+                </span>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <div 
+                    className="bg-emerald-400 h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${savedProfileReport.tier_breakdown?.easy?.percent || 0}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono text-slate-400 block mt-0.5">{savedProfileReport.tier_breakdown?.easy?.percent || 0}%</span>
+              </div>
+
+              {/* Medium Bar */}
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+                <span className="text-[10px] font-mono text-neon-amber uppercase font-bold block">Medium</span>
+                <span className="text-sm font-bold text-white font-mono">
+                  {savedProfileReport.tier_breakdown?.medium?.correct || 0}/{savedProfileReport.tier_breakdown?.medium?.total || 0}
+                </span>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <div 
+                    className="bg-neon-amber h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${savedProfileReport.tier_breakdown?.medium?.percent || 0}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono text-slate-400 block mt-0.5">{savedProfileReport.tier_breakdown?.medium?.percent || 0}%</span>
+              </div>
+
+              {/* Hard Bar */}
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+                <span className="text-[10px] font-mono text-rose-400 uppercase font-bold block">Hard</span>
+                <span className="text-sm font-bold text-white font-mono">
+                  {savedProfileReport.tier_breakdown?.hard?.correct || 0}/{savedProfileReport.tier_breakdown?.hard?.total || 0}
+                </span>
+                <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <div 
+                    className="bg-rose-400 h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${savedProfileReport.tier_breakdown?.hard?.percent || 0}%` }}
+                  />
+                </div>
+                <span className="text-[9px] font-mono text-slate-400 block mt-0.5">{savedProfileReport.tier_breakdown?.hard?.percent || 0}%</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory('practice');
+                setPracticeSubTab('diagnostic');
+                handleStartAdaptiveDiagnostic(savedProfileReport.unit_id);
+              }}
+              disabled={generatingDiagnostic}
+              className="w-full sm:w-auto px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-neon flex items-center justify-center gap-1.5 transition shrink-0 whitespace-nowrap"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Retake Diagnostic
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-3xl glass-panel p-5 sm:p-6 border border-sky-500/30 bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
+              <BrainCircuit className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                Evaluate Your Academic Level with Adaptive AI
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/20 text-sky-300">CAT Engine</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5 max-w-xl">
+                Take our dynamic computer-adaptive quiz to assess your exact proficiency across Easy, Medium, and Hard tiers, complete with strengths and targeted improvement feedback.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedCategory('practice');
+              setPracticeSubTab('diagnostic');
+              handleStartAdaptiveDiagnostic();
+            }}
+            disabled={generatingDiagnostic || selfPacedTopics.length === 0}
+            className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold shadow-neon flex items-center justify-center gap-2 transition shrink-0 whitespace-nowrap"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Start Level Evaluation
+          </button>
+        </div>
+      )}
 
       {/* Domain & Subject Selector Bar */}
       {classrooms.length > 0 && (
@@ -371,11 +850,32 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
             <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Layers className="w-4 h-4 text-neon-orange" /> Filter Academic Domain & Subject:
             </span>
-            <span className="text-[11px] font-mono text-neon-amber">{classrooms.length} Enrolled Domain(s)</span>
+            <span className="text-[11px] font-mono text-neon-amber">
+              {classrooms.filter(c => c.status === 'approved').length} Active Domain(s)
+              {classrooms.some(c => c.status === 'pending') && ` · ${classrooms.filter(c => c.status === 'pending').length} Pending`}
+            </span>
           </div>
 
+          {/* Pending Approval Notice */}
+          {classrooms.some(c => c.status === 'pending') && (
+            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200 animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                <div>
+                  <span className="font-bold">Awaiting Teacher Permission: </span>
+                  <span>
+                    You have requested to join {classrooms.filter(c => c.status === 'pending').map(c => `${c.name} (${c.subject || 'Domain'}) taught by ${c.teacher_name}`).join(', ')}. Your instructor will review your request shortly.
+                  </span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px] uppercase font-bold shrink-0 border border-amber-500/30">
+                Pending Approval
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2.5 overflow-x-auto pb-2 max-w-full">
-            {classrooms.length > 1 && (
+            {classrooms.filter(c => c.status === 'approved').length > 1 && (
               <button
                 onClick={() => setSelectedClassId('all')}
                 className={`px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${
@@ -385,29 +885,41 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 }`}
               >
                 <Compass className="w-4 h-4" />
-                <span>All Domains ({classrooms.length})</span>
+                <span>All Approved Domains ({classrooms.filter(c => c.status === 'approved').length})</span>
               </button>
             )}
 
             {classrooms.map((c) => {
               const isSelected = selectedClassId === c.classroom_id;
+              const isPending = c.status === 'pending';
               return (
                 <button
                   key={c.classroom_id}
                   onClick={() => setSelectedClassId(c.classroom_id)}
                   className={`px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2.5 ${
-                    isSelected
+                    isPending
+                      ? isSelected
+                        ? 'bg-amber-500 text-dark-950 font-bold shadow-neon-sm'
+                        : 'bg-dark-900 border border-amber-500/40 text-amber-200 hover:bg-amber-950/30'
+                      : isSelected
                       ? 'bg-neon-orange text-white shadow-neon-sm'
                       : 'bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-800'
                   }`}
                 >
-                  <BookOpen className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-neon-orange'}`} />
+                  <BookOpen className={`w-4 h-4 ${isPending ? (isSelected ? 'text-dark-950' : 'text-amber-400') : (isSelected ? 'text-white' : 'text-neon-orange')}`} />
                   <div>
                     <span className="font-bold">{c.subject || 'Domain'}</span>
-                    <span className={`text-[10px] ml-1.5 font-mono ${isSelected ? 'text-white/80' : 'text-slate-400'}`}>
+                    <span className={`text-[10px] ml-1.5 font-mono ${isSelected ? (isPending ? 'text-dark-900' : 'text-white/80') : 'text-slate-400'}`}>
                       ({c.name})
                     </span>
                   </div>
+                  {isPending && (
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-bold ${
+                      isSelected ? 'bg-dark-950 text-amber-300' : 'bg-amber-500/20 text-amber-300'
+                    }`}>
+                      Pending
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -415,28 +927,40 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
           {/* Active Domain Info Capsule */}
           {activeClassroom && selectedClassId !== 'all' && (
-            <div className="p-3.5 rounded-2xl bg-dark-900/90 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-slate-300 animate-in fade-in">
+            <div className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs animate-in fade-in ${
+              activeClassroom.status === 'pending'
+                ? 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                : 'bg-dark-900/90 border-slate-800 text-slate-300'
+            }`}>
               <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className={`w-2.5 h-2.5 rounded-full ${activeClassroom.status === 'pending' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 animate-pulse'}`} />
                 <span>Active Domain: <strong className="text-white text-neon-glow">{activeClassroom.subject}</strong></span>
                 <span className="text-slate-500">•</span>
                 <span>Classroom: <strong className="text-slate-200">{activeClassroom.name}</strong></span>
               </div>
-              <div className="text-[11px] font-mono text-slate-400">
-                Instructor: <strong className="text-neon-amber">{activeClassroom.teacher_name}</strong>
+              <div className="flex items-center gap-3">
+                <div className="text-[11px] font-mono text-slate-400">
+                  Instructor: <strong className="text-neon-amber">{activeClassroom.teacher_name}</strong>
+                </div>
+                {activeClassroom.status === 'pending' && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold uppercase">
+                    Awaiting Approval
+                  </span>
+                )}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Module View Tabs: All, Full Study Packs, AI Self-Paced Practice, Formative Assessments */}
+      {/* Module View Tabs: All, Full Study Packs, AI Self-Paced Practice, Formative Assessments, Notes Requests */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-slate-800">
         {[
-          { id: 'all', label: 'All Learning Modules', icon: Layers, count: displayedMaterials.length + (activeSelfPacedTest ? 1 : 0) + displayedAssignments.length },
+          { id: 'all', label: 'All Learning Modules', icon: Layers, count: displayedMaterials.length + (activeSelfPacedTest ? 1 : 0) + displayedAssignments.length + studentRequests.length },
           { id: 'packs', label: 'Approved Study Packs', icon: BookOpen, count: displayedMaterials.length },
           { id: 'practice', label: 'AI Self-Paced Practice', icon: BrainCircuit, count: selfPacedTopics.length },
           { id: 'assessments', label: 'Formative Assessments', icon: Clock, count: displayedAssignments.length },
+          { id: 'requests', label: 'Report / Request Notes', icon: MessageSquarePlus, count: studentRequests.length },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = selectedCategory === tab.id;
@@ -478,8 +1002,20 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
           {displayedMaterials.length === 0 ? (
             <GlassCard className="text-center py-10">
-              <BookOpen className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No approved study packs in this domain.</p>
+              {activeClassroom && activeClassroom.status === 'pending' ? (
+                <div className="space-y-2 max-w-md mx-auto">
+                  <Clock className="w-8 h-8 text-amber-400 mx-auto animate-pulse" />
+                  <h4 className="text-sm font-bold text-white">Join Permission Pending</h4>
+                  <p className="text-xs text-slate-300">
+                    Your request to join <strong>{activeClassroom.name}</strong> is awaiting permission from Professor <strong>{activeClassroom.teacher_name}</strong>. Study packs will unlock once approved.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <BookOpen className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-400">No approved study packs in this domain.</p>
+                </>
+              )}
             </GlassCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -579,13 +1115,594 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
             </div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-sky-500/15 text-sky-400 border border-sky-500/30 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-sky-400" /> Powered by Gemini AI
+                <Sparkles className="w-3 h-3 text-sky-400" /> Powered by Gemini AI CAT Engine
               </span>
             </div>
           </div>
 
-          {/* Generator Control Card */}
-          <div className="rounded-3xl glass-panel-accent p-6 border border-sky-500/30 shadow-neon space-y-5 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
+          {/* Mode Switcher: 1. Dynamic Level Evaluator (CAT) | 2. Custom Practice */}
+          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-dark-950 border border-slate-800 max-w-md">
+            <button
+              type="button"
+              onClick={() => {
+                setPracticeSubTab('diagnostic');
+                setActiveSelfPacedTest(null);
+              }}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                practiceSubTab === 'diagnostic'
+                  ? 'bg-sky-500 text-black shadow-neon-sm font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <BrainCircuit className="w-4 h-4" /> 🎯 Dynamic Level Evaluator
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPracticeSubTab('custom');
+                setAdaptiveActive(false);
+              }}
+              className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                practiceSubTab === 'custom'
+                  ? 'bg-neon-orange text-white shadow-neon-sm font-black'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sliders className="w-4 h-4" /> ⚙️ Custom Practice
+            </button>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* SUBTAB 1: DYNAMIC COMPUTER-ADAPTIVE LEVEL EVALUATOR (CAT) */}
+          {/* ========================================================================= */}
+          {practiceSubTab === 'diagnostic' && (
+            <div className="space-y-6">
+
+              {/* CASE 1: EVALUATION REPORT DISPLAY */}
+              {adaptiveFinished && adaptiveEvaluation && (
+                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-neon space-y-6 animate-in fade-in bg-dark-900/95">
+                  {/* Report Header Card */}
+                  <div className="rounded-2xl p-6 bg-gradient-to-r from-dark-950 via-slate-900 to-dark-950 border border-sky-500/40 shadow-neon flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="flex items-start sm:items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex flex-col items-center justify-center text-white shadow-[0_0_20px_rgba(56,189,248,0.35)] shrink-0">
+                        <Trophy className="w-7 h-7 text-white" />
+                        <span className="text-[9px] font-mono font-bold uppercase mt-0.5">Evaluated</span>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 uppercase">
+                          Dynamic Adaptive Evaluation Complete
+                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-xl sm:text-2xl font-black text-white">
+                            Your Evaluated Level: <span className="text-neon-glow">{adaptiveEvaluation.level?.title}</span>
+                          </h3>
+                        </div>
+                        <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                          {adaptiveEvaluation.level?.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 w-full md:w-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleStartAdaptiveDiagnostic(adaptiveUnitId)}
+                        disabled={generatingDiagnostic}
+                        className="flex-1 md:flex-none px-4 py-2.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold flex items-center justify-center gap-2 transition"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" /> Retake Diagnostic
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetAdaptiveTest}
+                        className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold flex items-center justify-center gap-2 transition shadow-neon-sm"
+                      >
+                        <Check className="w-3.5 h-3.5 text-black" /> Done
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Difficulty Tier Accuracy Bars */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Easy Tier Card */}
+                    <div className="p-4 rounded-2xl bg-dark-950 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-emerald-400 flex items-center gap-1.5 uppercase">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Easy Tier (Foundations)
+                        </span>
+                        <span className="text-sm font-bold text-white font-mono">
+                          {adaptiveEvaluation.tier_breakdown?.easy?.correct}/{adaptiveEvaluation.tier_breakdown?.easy?.total} ({adaptiveEvaluation.tier_breakdown?.easy?.percent}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-emerald-400 h-full rounded-full transition-all duration-500" 
+                          style={{ width: `${adaptiveEvaluation.tier_breakdown?.easy?.percent || 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-slate-400 block">Definitions, terms, and core factual rules</span>
+                    </div>
+
+                    {/* Medium Tier Card */}
+                    <div className="p-4 rounded-2xl bg-dark-950 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-neon-amber flex items-center gap-1.5 uppercase">
+                          <Target className="w-4 h-4 text-neon-amber" /> Medium Tier (Application)
+                        </span>
+                        <span className="text-sm font-bold text-white font-mono">
+                          {adaptiveEvaluation.tier_breakdown?.medium?.correct}/{adaptiveEvaluation.tier_breakdown?.medium?.total} ({adaptiveEvaluation.tier_breakdown?.medium?.percent}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-neon-amber h-full rounded-full transition-all duration-500" 
+                          style={{ width: `${adaptiveEvaluation.tier_breakdown?.medium?.percent || 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-slate-400 block">Scenario problem-solving and mechanism analysis</span>
+                    </div>
+
+                    {/* Hard Tier Card */}
+                    <div className="p-4 rounded-2xl bg-dark-950 border border-slate-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-mono font-bold text-rose-400 flex items-center gap-1.5 uppercase">
+                          <Flame className="w-4 h-4 text-rose-400" /> Hard Tier (Advanced)
+                        </span>
+                        <span className="text-sm font-bold text-white font-mono">
+                          {adaptiveEvaluation.tier_breakdown?.hard?.correct}/{adaptiveEvaluation.tier_breakdown?.hard?.total} ({adaptiveEvaluation.tier_breakdown?.hard?.percent}%)
+                        </span>
+                      </div>
+                      <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-rose-400 h-full rounded-full transition-all duration-500" 
+                          style={{ width: `${adaptiveEvaluation.tier_breakdown?.hard?.percent || 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-slate-400 block">Multi-step critique, trade-offs, and edge cases</span>
+                    </div>
+                  </div>
+
+                  {/* 3 Feedback Sections: Strong Areas, Need to Improve, Need to Build Strength */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    
+                    {/* Column 1: Stronger In This Area */}
+                    <div className="p-5 rounded-2xl bg-dark-950/90 border border-emerald-500/30 space-y-3">
+                      <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                        <div>
+                          <h4 className="text-sm font-bold text-white">Stronger In This Area</h4>
+                          <span className="text-[10px] text-slate-400">Concepts mastered with high accuracy</span>
+                        </div>
+                      </div>
+
+                      {adaptiveEvaluation.strong_areas?.length > 0 ? (
+                        <div className="space-y-2.5">
+                          {adaptiveEvaluation.strong_areas.map((area, idx) => (
+                            <div key={idx} className="p-3 rounded-xl bg-dark-900 border border-emerald-500/20 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-emerald-300">{area.topic}</span>
+                                <span className="text-[10px] font-mono text-emerald-400 font-bold">{area.score} ({area.percent}%)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-relaxed">{area.feedback}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic py-4 text-center">
+                          Continue practicing to establish consistent strength benchmarks.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Column 2: Need to Improve In This Area */}
+                    <div className="p-5 rounded-2xl bg-dark-950/90 border border-rose-500/30 space-y-3">
+                      <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                        <AlertCircle className="w-5 h-5 text-rose-400" />
+                        <div>
+                          <h4 className="text-sm font-bold text-white">Need to Improve In This Area</h4>
+                          <span className="text-[10px] text-slate-400">Topics where incorrect answers occurred</span>
+                        </div>
+                      </div>
+
+                      {adaptiveEvaluation.improve_areas?.length > 0 ? (
+                        <div className="space-y-2.5">
+                          {adaptiveEvaluation.improve_areas.map((area, idx) => (
+                            <div key={idx} className="p-3 rounded-xl bg-dark-900 border border-rose-500/20 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-rose-300">{area.topic}</span>
+                                <span className="text-[10px] font-mono text-rose-400 font-bold">{area.score} ({area.percent}%)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-relaxed">{area.feedback}</p>
+                              {area.mistakes?.[0] && (
+                                <div className="p-2 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 space-y-0.5">
+                                  <span className="text-neon-amber font-mono font-bold block">Correction Key:</span>
+                                  <span className="text-slate-300">{area.mistakes[0].rationale}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-dark-900/60 border border-slate-800 text-center py-6 text-xs text-emerald-400 font-semibold">
+                          🎉 Outstanding! No critical improvement gaps detected in this session.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Column 3: Need to Build Strength In This Area */}
+                    <div className="p-5 rounded-2xl bg-dark-950/90 border border-sky-500/30 space-y-3">
+                      <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
+                        <Target className="w-5 h-5 text-sky-400" />
+                        <div>
+                          <h4 className="text-sm font-bold text-white">Need to Build Strength</h4>
+                          <span className="text-[10px] text-slate-400">Topics requiring reinforced practice</span>
+                        </div>
+                      </div>
+
+                      {adaptiveEvaluation.build_areas?.length > 0 ? (
+                        <div className="space-y-2.5">
+                          {adaptiveEvaluation.build_areas.map((area, idx) => (
+                            <div key={idx} className="p-3 rounded-xl bg-dark-900 border border-sky-500/20 space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-sky-300">{area.topic}</span>
+                                <span className="text-[10px] font-mono text-sky-400 font-bold">{area.score} ({area.percent}%)</span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 leading-relaxed">{area.feedback}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-xl bg-dark-900/60 border border-slate-800 text-center py-6 text-xs text-slate-400">
+                          Review recommended: <strong className="text-sky-300">{adaptiveEvaluation.recommendation}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* CASE 2: ACTIVE ADAPTIVE TEST RUNNER */}
+              {adaptiveActive && adaptiveQuestion && !adaptiveFinished && (
+                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-neon space-y-6 animate-in fade-in bg-dark-900/95">
+                  {/* Status Bar */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 uppercase">
+                          {adaptiveUnitTitle}
+                        </span>
+                        {/* Dynamic Current Tier Indicator */}
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border flex items-center gap-1.5 ${
+                          adaptiveCurrentTier === 'Easy'
+                            ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
+                            : adaptiveCurrentTier === 'Medium'
+                            ? 'bg-amber-950/80 text-neon-amber border-neon-amber/40'
+                            : 'bg-rose-950/80 text-rose-400 border-rose-500/40 animate-pulse'
+                        }`}>
+                          <Target className="w-3 h-3" /> Current Tier: {adaptiveCurrentTier}
+                        </span>
+                        {adaptiveConsecutiveCorrect > 0 && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-dark-950 text-emerald-400 border border-slate-700 flex items-center gap-1">
+                            <Flame className="w-3 h-3 text-emerald-400" /> {adaptiveConsecutiveCorrect} streak
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                        Question {adaptiveQuestionNum} of 9
+                        <span className="text-xs font-normal text-slate-400">
+                          (Concept: {adaptiveQuestion.concept_topic || adaptiveUnitTitle})
+                        </span>
+                      </h3>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className="text-[10px] font-mono text-slate-400 block uppercase">Overall Progress:</span>
+                        <span className="text-xs font-mono font-bold text-sky-300">
+                          {adaptiveHistory.length} / 9 Answered
+                        </span>
+                      </div>
+                      <div className="w-24 bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div 
+                          className="bg-sky-400 h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.round((adaptiveHistory.length / 9) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Adaptation Alert Banner (Level Up / Level Down) */}
+                  {adaptiveEvent && (
+                    <div className={`p-3.5 rounded-2xl border flex items-center gap-3 text-xs font-semibold animate-in slide-in-from-top-2 ${
+                      adaptiveEvent.type === 'up'
+                        ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.2)]'
+                        : 'bg-amber-950/60 border-amber-500/50 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.2)]'
+                    }`}>
+                      {adaptiveEvent.type === 'up' ? (
+                        <TrendingUp className="w-4 h-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <TrendingDown className="w-4 h-4 text-amber-400 shrink-0" />
+                      )}
+                      <span>{adaptiveEvent.message}</span>
+                    </div>
+                  )}
+
+                  {/* Question Stem */}
+                  <div className="p-5 rounded-2xl bg-dark-950/80 border border-slate-800 text-slate-100 space-y-3">
+                    <p className="text-sm sm:text-base font-semibold leading-relaxed">
+                      {adaptiveQuestion.stem}
+                    </p>
+                  </div>
+
+                  {/* Options List */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {adaptiveQuestion.options && Object.entries(adaptiveQuestion.options).map(([optKey, optVal]) => {
+                      const isSelected = adaptiveSelectedOpt === optKey;
+                      const isCorrect = String(optKey).toUpperCase() === String(adaptiveQuestion.correct_option).toUpperCase();
+
+                      let cardStyle = 'bg-dark-900 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-dark-850 cursor-pointer';
+                      let badgeStyle = 'bg-dark-800 text-slate-400';
+
+                      if (!adaptiveAnswered) {
+                        if (isSelected) {
+                          cardStyle = 'bg-sky-950/40 border-sky-500 text-sky-200 ring-1 ring-sky-500 font-semibold cursor-pointer';
+                          badgeStyle = 'bg-sky-500 text-black font-bold';
+                        }
+                      } else {
+                        if (isCorrect) {
+                          cardStyle = 'bg-emerald-950/40 border-emerald-500 text-emerald-200 font-semibold ring-1 ring-emerald-500/40';
+                          badgeStyle = 'bg-emerald-500 text-black font-bold';
+                        } else if (isSelected && !isCorrect) {
+                          cardStyle = 'bg-rose-950/40 border-rose-500 text-rose-200 font-semibold ring-1 ring-rose-500/40';
+                          badgeStyle = 'bg-rose-500 text-white font-bold';
+                        }
+                      }
+
+                      return (
+                        <button
+                          key={optKey}
+                          type="button"
+                          disabled={adaptiveAnswered}
+                          onClick={() => handleSelectAdaptiveOption(optKey)}
+                          className={`p-4 rounded-xl border text-left flex items-start justify-between gap-3 transition-all ${cardStyle}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className={`w-6 h-6 rounded-lg text-xs font-mono flex items-center justify-center shrink-0 ${badgeStyle}`}>
+                              {optKey}
+                            </span>
+                            <span className="text-xs sm:text-sm leading-relaxed">{optVal}</span>
+                          </div>
+                          {adaptiveAnswered && isCorrect && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          )}
+                          {adaptiveAnswered && isSelected && !isCorrect && (
+                            <X className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Instant Verification Feedback & Step Rationale */}
+                  {adaptiveAnswered && (
+                    <div className="p-4 rounded-2xl bg-dark-950 border border-sky-500/30 space-y-2 animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        {String(adaptiveSelectedOpt).toUpperCase() === String(adaptiveQuestion.correct_option).toUpperCase() ? (
+                          <span className="text-xs font-bold font-mono text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Correct! Step verified.
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold font-mono text-rose-400 flex items-center gap-1.5">
+                            <X className="w-4 h-4 text-rose-400" /> Incorrect. Correct Option: {adaptiveQuestion.correct_option}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                        {adaptiveQuestion.rationale}
+                      </p>
+                      {adaptiveQuestion.source_citation && (
+                        <span className="text-[10px] font-mono text-slate-500 block pt-1 border-t border-slate-800">
+                          Source: {adaptiveQuestion.source_citation}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Adaptive Action Bar */}
+                  <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleResetAdaptiveTest}
+                      className="px-4 py-2 rounded-xl bg-dark-950 hover:bg-dark-850 text-slate-400 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" /> Quit Test
+                    </button>
+
+                    {!adaptiveAnswered ? (
+                      <button
+                        type="button"
+                        onClick={handleVerifyAdaptiveAnswer}
+                        disabled={!adaptiveSelectedOpt}
+                        className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-extrabold text-xs shadow-neon flex items-center gap-2 transition"
+                      >
+                        <Check className="w-4 h-4 text-black" /> Verify & Continue
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleNextAdaptiveQuestion}
+                        disabled={evaluatingReport}
+                        className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-black font-extrabold text-xs shadow-[0_0_20px_rgba(56,189,248,0.4)] flex items-center gap-2 transition"
+                      >
+                        {evaluatingReport ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin text-black" /> Calculating Diagnostic Level...
+                          </>
+                        ) : adaptiveHistory.length >= 9 ? (
+                          <>
+                            <Trophy className="w-4 h-4 text-black" /> Conclude & See Evaluation Report 🏆
+                          </>
+                        ) : (
+                          <>
+                            <span>Next Adaptive Question</span> <ArrowRight className="w-4 h-4 text-black" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* CASE 3: DIAGNOSTIC LAUNCHER & CONFIGURATION CARD */}
+              {!adaptiveActive && !adaptiveFinished && (
+                <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-sky-500/30 shadow-neon space-y-6 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 uppercase">
+                          Computer-Adaptive Testing (CAT)
+                        </span>
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-black text-white">
+                        Dynamic Proficiency Level Evaluator
+                      </h3>
+                      <p className="text-xs text-slate-300 max-w-xl">
+                        Evaluates your baseline by dynamically adjusting question difficulty up or down based on your real-time responses.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs font-mono text-neon-amber bg-dark-950 px-3.5 py-2 rounded-xl border border-slate-800">
+                      <Clock className="w-3.5 h-3.5" /> 9 Adaptive Questions
+                    </div>
+                  </div>
+
+                  {/* 4-Step Adaptive Mechanism Visualizer */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
+                      <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase block">1. Start Easy 🟢</span>
+                      <h4 className="font-bold text-white text-xs">2–3 Foundational Questions</h4>
+                      <p className="text-[11px] text-slate-400">Verifies core definitions and textbook terminology recall.</p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
+                      <span className="text-[10px] font-mono text-neon-amber font-bold uppercase block">2. Level Up ⬆️</span>
+                      <h4 className="font-bold text-white text-xs">Medium Application Tier</h4>
+                      <p className="text-[11px] text-slate-400">2 consecutive correct answers elevate difficulty to scenario problem solving.</p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
+                      <span className="text-[10px] font-mono text-rose-400 font-bold uppercase block">3. Hard Challenge Tier 🚀</span>
+                      <h4 className="font-bold text-white text-xs">Edge Cases & Critique</h4>
+                      <p className="text-[11px] text-slate-400">Mastery elevates to high-order analysis; 2 wrong adapts down ⬇️.</p>
+                    </div>
+
+                    <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
+                      <span className="text-[10px] font-mono text-sky-400 font-bold uppercase block">4. Final Scorecard 🏆</span>
+                      <h4 className="font-bold text-white text-xs">Strength & Growth Report</h4>
+                      <p className="text-[11px] text-slate-400">Breaks down Strong Areas vs Areas to Improve, updating your Profile Level.</p>
+                    </div>
+                  </div>
+
+                  {/* Topic Selector & Launch Action */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 border-t border-slate-800">
+                    <div className="space-y-1 sm:max-w-md w-full">
+                      <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                        <BookOpen className="w-3.5 h-3.5 text-sky-400" /> Select Topic for Level Evaluation:
+                      </label>
+                      <select
+                        value={selectedTopicUnitId}
+                        onChange={(e) => setSelectedTopicUnitId(e.target.value)}
+                        className="w-full rounded-xl bg-dark-900 border border-slate-700 text-white p-2.5 text-xs font-semibold focus:border-sky-400 focus:outline-none"
+                      >
+                        {selfPacedTopics.length === 0 ? (
+                          <option value="">No assigned pack topics available</option>
+                        ) : (
+                          selfPacedTopics.map((t) => (
+                            <option key={t.unit_id} value={t.unit_id}>
+                              {t.title} ({t.subject || 'Domain'})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleStartAdaptiveDiagnostic()}
+                      disabled={generatingDiagnostic || selfPacedTopics.length === 0}
+                      className="px-8 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-extrabold text-xs shadow-[0_0_25px_rgba(56,189,248,0.4)] flex items-center justify-center gap-2 transition shrink-0 self-end sm:self-auto"
+                    >
+                      {generatingDiagnostic ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-black" /> Calibrating Adaptive Pool...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 text-black" /> Launch Dynamic Level Evaluation
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Quick Launch Topic Grid */}
+                  {selfPacedTopics.length > 0 && (
+                    <div className="pt-2 space-y-3">
+                      <span className="text-xs font-mono font-bold uppercase text-slate-400 block">
+                        Quick-Select Topic for Level Evaluation:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {selfPacedTopics.map((top) => (
+                          <div
+                            key={top.unit_id}
+                            className="p-4 rounded-2xl bg-dark-950/80 border border-slate-800 hover:border-sky-500/40 transition-all flex flex-col justify-between space-y-3 group"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/10 text-sky-400 uppercase">
+                                  {top.subject || 'Pack'}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-500">Adaptive Diagnostic</span>
+                              </div>
+                              <h4 className="font-bold text-sm text-white group-hover:text-sky-300 transition-colors">
+                                {top.title}
+                              </h4>
+                              <p className="text-[11px] text-slate-400 mt-1 line-clamp-2">
+                                Evaluate Easy, Medium, and Hard competency in {top.title}.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={generatingDiagnostic}
+                              onClick={() => {
+                                setSelectedTopicUnitId(String(top.unit_id));
+                                handleStartAdaptiveDiagnostic(top.unit_id);
+                              }}
+                              className="w-full py-2 rounded-xl bg-dark-900 hover:bg-sky-500 hover:text-black text-sky-400 text-xs font-bold border border-slate-800 hover:border-sky-500 flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                            >
+                              <BrainCircuit className="w-3.5 h-3.5" /> Evaluate Level <ArrowRight className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+            </div>
+          )}
+
+          {/* ========================================================================= */}
+          {/* SUBTAB 2: CUSTOM PRACTICE TEST GENERATOR */}
+          {/* ========================================================================= */}
+          {practiceSubTab === 'custom' && (
+            <div className="space-y-6">
+
+              {/* Generator Control Card */}
+              <div className="rounded-3xl glass-panel-accent p-6 border border-sky-500/30 shadow-neon space-y-5 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-3 border-b border-slate-800">
               <div className="space-y-1">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
@@ -1129,6 +2246,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
             </div>
           )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1150,8 +2269,20 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
           {displayedAssignments.length === 0 ? (
             <GlassCard className="text-center py-10">
-              <FileCheck className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No active assigned tests in this domain.</p>
+              {activeClassroom && activeClassroom.status === 'pending' ? (
+                <div className="space-y-2 max-w-md mx-auto">
+                  <Clock className="w-8 h-8 text-amber-400 mx-auto animate-pulse" />
+                  <h4 className="text-sm font-bold text-white">Classroom Access Pending</h4>
+                  <p className="text-xs text-slate-300">
+                    Formative assessments will become available once Professor <strong>{activeClassroom.teacher_name}</strong> grants join permission for <strong>{activeClassroom.name}</strong>.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <FileCheck className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs text-slate-400">No active assigned tests in this domain.</p>
+                </>
+              )}
             </GlassCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1219,20 +2350,182 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* SECTION 4: COURSE NOTES & MATERIAL REQUESTS HUB */}
+      {/* ========================================================================= */}
+      {(selectedCategory === 'all' || selectedCategory === 'requests') && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                  <MessageSquarePlus className="w-4 h-4" />
+                </span>
+                <h3 className="text-lg font-bold text-white">Course Notes & Material Requests</h3>
+                <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  {displayedRequests.length}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Directly request unit lecture notes, worked step breakdowns, missing handouts, or report syllabus issues to your faculty instructor.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Filter Pills */}
+              <div className="flex items-center bg-dark-900 border border-slate-800 rounded-xl p-1 text-xs">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'open', label: 'Pending / In Progress' },
+                  { id: 'resolved', label: 'Resolved' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => setStudentRequestFilter(f.id)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                      studentRequestFilter === f.id
+                        ? 'bg-purple-600 text-white shadow-neon-sm font-semibold'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  if (selectedClassId !== 'all' && !requestClassroomId) {
+                    setRequestClassroomId(selectedClassId);
+                  }
+                  setShowCreateRequestModal(true);
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" /> Request Course Notes
+              </button>
+            </div>
+          </div>
+
+          {displayedRequests.length === 0 ? (
+            <div className="rounded-2xl glass-panel p-8 text-center border border-dashed border-slate-800">
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mx-auto mb-3">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-bold text-white">No Course Notes Requests Yet</h4>
+              <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                Need extra study notes, worked problem breakdowns, or missing unit pages from your instructor? Submit a request and receive guidance right here.
+              </p>
+              <button
+                onClick={() => {
+                  if (selectedClassId !== 'all' && !requestClassroomId) {
+                    setRequestClassroomId(selectedClassId);
+                  }
+                  setShowCreateRequestModal(true);
+                }}
+                className="mt-4 px-4 py-2 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-xs font-bold transition-all inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" /> Submit First Request
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {displayedRequests.map(req => {
+                const isResolved = req.status === 'resolved' || req.status === 'closed';
+                const isInProgress = req.status === 'in_progress';
+                return (
+                  <div
+                    key={req.id}
+                    className="p-5 rounded-2xl glass-panel border border-slate-800 hover:border-purple-500/40 transition-all flex flex-col justify-between gap-4 relative overflow-hidden"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 uppercase">
+                            {req.classroom_subject || req.classroom_name || 'Academic Course'}
+                          </span>
+                          {req.unit_title && (
+                            <span className="text-[11px] font-mono text-slate-400">
+                              {req.unit_title}
+                            </span>
+                          )}
+                        </div>
+
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
+                            isResolved
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                              : isInProgress
+                              ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 animate-pulse'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          }`}
+                        >
+                          {isResolved ? 'Resolved' : isInProgress ? 'In Progress' : 'Pending Review'}
+                        </span>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-white leading-snug">
+                        {req.question_text}
+                      </h4>
+
+                      {req.details && (
+                        <p className="text-xs text-slate-300 bg-dark-950/70 p-3 rounded-xl border border-slate-800/80 leading-relaxed font-sans">
+                          {req.details}
+                        </p>
+                      )}
+
+                      {/* Instructor Responses Section */}
+                      {req.responses && req.responses.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2">
+                          <div className="text-[11px] font-mono uppercase font-bold text-emerald-400 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Instructor Response
+                          </div>
+                          {req.responses.map(resp => (
+                            <div
+                              key={resp.id}
+                              className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-slate-200 space-y-1"
+                            >
+                              <div className="flex items-center justify-between text-[10px] text-emerald-400 font-mono">
+                                <span>{resp.user_name} ({resp.user_role})</span>
+                                <span>{new Date(resp.created_at).toLocaleDateString()}</span>
+                              </div>
+                              <p className="leading-relaxed text-slate-200">{resp.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 font-mono border-t border-slate-800/60">
+                      <span>Submitted: {new Date(req.created_at).toLocaleDateString()}</span>
+                      <span className="text-slate-400">
+                        {req.responses && req.responses.length > 0
+                          ? `${req.responses.length} reply`
+                          : 'Awaiting faculty review'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Join Classroom Modal */}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
           <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
             <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <GraduationCap className="w-5 h-5 text-neon-orange" /> Join Classroom via Code
+              <GraduationCap className="w-5 h-5 text-neon-orange" /> Request Classroom Join Permission
             </h3>
             <p className="text-xs text-slate-300 mb-4">
-              Enter the 6-character uppercase code provided by your instructor.
+              Enter the 6-character uppercase code provided by your instructor. Your join request will be sent to the instructor for permission and approval.
             </p>
 
             {joinMessage && (
-              <div className="mb-4 p-3 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <div className="mb-4 p-3 rounded-xl bg-amber-950/60 border border-amber-500/40 text-amber-200 text-xs flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>{joinMessage}</span>
               </div>
             )}
@@ -1264,7 +2557,150 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   disabled={joining}
                   className="btn-royal text-xs py-2 px-4"
                 >
-                  {joining ? 'Verifying...' : 'Enroll in Classroom'}
+                  {joining ? 'Sending Request...' : 'Request Permission to Join'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Course Notes Request Modal */}
+      {showCreateRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-lg rounded-2xl glass-panel-accent p-6 border border-purple-500/40 shadow-neon space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <MessageSquarePlus className="w-5 h-5 text-purple-400" /> Request Course Notes / Report Material
+              </h3>
+              <button
+                onClick={() => setShowCreateRequestModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Submit a formal request to your instructor for targeted lecture notes, worked problem sheets, formula sheets, or report missing sections.
+            </p>
+
+            <form onSubmit={handleCreateStudentRequest} className="space-y-3.5">
+              {/* Classroom / Academic Domain Select */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Academic Classroom / Subject <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  value={requestClassroomId}
+                  onChange={(e) => {
+                    setRequestClassroomId(e.target.value);
+                    setRequestUnitId('');
+                  }}
+                  required
+                  className="w-full rounded-xl glass-input p-2.5 text-xs text-white"
+                >
+                  <option value="" disabled>-- Select Enrolled Classroom --</option>
+                  {classrooms.map(c => (
+                    <option key={c.classroom_id} value={c.classroom_id} className="bg-dark-900 text-white">
+                      {c.subject} - {c.name} ({c.teacher_name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Unit Selection (Optional) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Target Topic / Unit (Optional)
+                </label>
+                <select
+                  value={requestUnitId}
+                  onChange={(e) => setRequestUnitId(e.target.value)}
+                  className="w-full rounded-xl glass-input p-2.5 text-xs text-white"
+                >
+                  <option value="">General Course Material (All Units)</option>
+                  {selfPacedTopics
+                    .filter(t => !requestClassroomId || String(t.classroom_id) === String(requestClassroomId))
+                    .map(t => (
+                      <option key={t.unit_id} value={t.unit_id} className="bg-dark-900 text-white">
+                        {t.title}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              {/* Request Category */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Request Category
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    'Course Notes Request',
+                    'Worked Steps & Solutions',
+                    'Missing Handouts / Pages',
+                    'Exam Revision Pack'
+                  ].map(cat => (
+                    <button
+                      type="button"
+                      key={cat}
+                      onClick={() => setRequestCategoryType(cat)}
+                      className={`p-2.5 rounded-xl text-xs font-medium text-left border transition-all ${
+                        requestCategoryType === cat
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-500 shadow-neon-sm font-semibold'
+                          : 'bg-dark-900/60 text-slate-400 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Request Title */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Request Subject / Title <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={requestTitle}
+                  onChange={(e) => setRequestTitle(e.target.value)}
+                  placeholder="e.g. Unit 2 Theorem 4 Step-by-Step Breakdown Notes"
+                  required
+                  className="w-full rounded-xl glass-input p-2.5 text-xs text-white font-medium"
+                />
+              </div>
+
+              {/* Request Details */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Additional Context or Details (Optional)
+                </label>
+                <textarea
+                  value={requestDetails}
+                  onChange={(e) => setRequestDetails(e.target.value)}
+                  rows={3}
+                  placeholder="Describe the specific slides, subtopics, or examples you would like your instructor to provide..."
+                  className="w-full rounded-xl glass-input p-2.5 text-xs text-white resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateRequestModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs bg-dark-800 text-slate-300 hover:bg-dark-750"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingRequest}
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {submittingRequest ? 'Submitting...' : 'Send Request to Instructor'}
                 </button>
               </div>
             </form>

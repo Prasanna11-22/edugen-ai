@@ -5,26 +5,31 @@ import string
 import secrets
 from typing import List, Optional
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, and_
 from ..database import get_db
 from ..models import (
     User, Classroom, Enrollment, Source, SourceVersion, Chunk, Unit,
     Objective, Glossary, Asset, AssetVersion, QualityFlag, Assignment, Submission,
-    QuizItem, QuizItemVersion, StudentRequest, RequestResponse, SourcePage
+    QuizItem, QuizItemVersion, StudentRequest, RequestResponse, SourcePage,
+    ValidationFlag
 )
 from ..schemas import (
     ClassroomCreate, StudentCreate, BulkStudentCreate, UnitCreateRequest,
     GenerateAssetsRequest, AssetReviewAction, InlineEditAsset, QualityFlagOverride,
     AssignmentCreate, GlossaryTermUpdate, UnitAssignToClassroomsRequest,
     QuizItemSelectiveRegenRequest, QuizItemStatusUpdate, QuizItemEditRequest,
-    StudentRequestCreate, StudentRequestStatusUpdate, StudentRequestResponseCreate
+    StudentRequestCreate, StudentRequestStatusUpdate, StudentRequestResponseCreate,
+    ObjectiveValidationRequest, OCRCorrectionValidationRequest,
+    GlossaryTermValidationRequest, AssetEditValidationRequest,
+    ValidationFlagResolutionRequest, ObjectiveCoverageCheckRequest
 )
 from ..auth import teacher_required, get_password_hash
-from ..services.pdf_parser import extract_text_from_file_or_image, extract_text_from_pdf, clean_extracted_text
+from ..services.pdf_parser import extract_text_from_pdf, clean_extracted_text
 from ..services.chunker import semantic_chunk_text
 from ..services.embeddings import generate_embeddings_for_chunks, retrieve_top_k_chunks
+from ..services.coverage_checker import check_objective_source_coverage
 from ..services.rag_engine import (
     extract_glossary_from_source,
     generate_concept_explanation,
@@ -36,6 +41,12 @@ from ..services.rag_engine import (
     regenerate_single_quiz_item
 )
 from ..services.guardrails import run_all_guardrails
+from ..services.teacher_validator import (
+    validate_learning_objective,
+    validate_ocr_correction,
+    validate_glossary_term,
+    validate_asset_edit
+)
 
 router = APIRouter(prefix="/api/teacher", tags=["Teacher Studio"])
 
@@ -47,16 +58,118 @@ def get_teacher_classrooms(db: Session = Depends(get_db), current_teacher: User 
     classrooms = db.query(Classroom).filter(Classroom.teacher_id == current_teacher.id).order_by(Classroom.created_at.desc()).all()
     res = []
     for c in classrooms:
-        count = db.query(Enrollment).filter(Enrollment.classroom_id == c.id).count()
+        count = db.query(Enrollment).filter(Enrollment.classroom_id == c.id, Enrollment.status == "approved").count()
+        pending_count = db.query(Enrollment).filter(Enrollment.classroom_id == c.id, Enrollment.status == "pending").count()
         res.append({
             "id": c.id,
             "name": c.name,
             "subject": c.subject,
             "join_code": c.join_code,
             "student_count": count,
+            "pending_requests_count": pending_count,
             "created_at": c.created_at
         })
     return res
+
+@router.get("/classrooms/join-requests")
+def get_classroom_join_requests(
+    classroom_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    """
+    Returns pending classroom join permission requests for this teacher.
+    """
+    teacher_classrooms = db.query(Classroom).filter(Classroom.teacher_id == current_teacher.id).all()
+    teacher_class_ids = [c.id for c in teacher_classrooms]
+    if not teacher_class_ids:
+        return []
+        
+    query = db.query(Enrollment).filter(
+        Enrollment.classroom_id.in_(teacher_class_ids),
+        Enrollment.status == "pending"
+    )
+    if classroom_id and classroom_id in teacher_class_ids:
+        query = query.filter(Enrollment.classroom_id == classroom_id)
+        
+    requests = query.order_by(Enrollment.joined_at.desc()).all()
+    res = []
+    for enr in requests:
+        st = db.query(User).filter(User.id == enr.student_id).first()
+        cl = db.query(Classroom).filter(Classroom.id == enr.classroom_id).first()
+        if st and cl:
+            res.append({
+                "enrollment_id": enr.id,
+                "classroom_id": cl.id,
+                "classroom_name": cl.name,
+                "classroom_subject": cl.subject,
+                "join_code": cl.join_code,
+                "student_id": st.id,
+                "student_name": st.name,
+                "student_email": st.email,
+                "requested_at": enr.joined_at.isoformat() if enr.joined_at else datetime.utcnow().isoformat(),
+                "status": enr.status
+            })
+    return res
+
+@router.post("/classrooms/join-requests/{enrollment_id}/approve")
+def approve_classroom_join_request(
+    enrollment_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    """
+    Teacher grants permission for a student to join the classroom.
+    """
+    enr = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enr:
+        raise HTTPException(status_code=404, detail="Enrollment request not found.")
+        
+    cl = db.query(Classroom).filter(Classroom.id == enr.classroom_id).first()
+    if not cl or cl.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage this classroom.")
+        
+    enr.status = "approved"
+    enr.joined_at = datetime.utcnow()
+    db.commit()
+    
+    st = db.query(User).filter(User.id == enr.student_id).first()
+    student_name = st.name if st else "Student"
+    
+    return {
+        "message": f"Permission granted! {student_name} is now enrolled in {cl.name}.",
+        "enrollment_id": enr.id,
+        "status": "approved"
+    }
+
+@router.post("/classrooms/join-requests/{enrollment_id}/reject")
+def reject_classroom_join_request(
+    enrollment_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    """
+    Teacher declines a student join request.
+    """
+    enr = db.query(Enrollment).filter(Enrollment.id == enrollment_id).first()
+    if not enr:
+        raise HTTPException(status_code=404, detail="Enrollment request not found.")
+        
+    cl = db.query(Classroom).filter(Classroom.id == enr.classroom_id).first()
+    if not cl or cl.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=403, detail="You do not have permission to manage this classroom.")
+        
+    st = db.query(User).filter(User.id == enr.student_id).first()
+    student_name = st.name if st else "Student"
+    
+    enr.status = "rejected"
+    db.commit()
+    
+    return {
+        "message": f"Join request for {student_name} was declined.",
+        "enrollment_id": enr.id,
+        "status": "rejected"
+    }
 
 @router.post("/classrooms")
 def create_classroom(data: ClassroomCreate, db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
@@ -72,6 +185,24 @@ def create_classroom(data: ClassroomCreate, db: Session = Depends(get_db), curre
     db.commit()
     db.refresh(classroom)
     return classroom
+
+@router.delete("/classrooms/{classroom_id}")
+def delete_classroom(
+    classroom_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    cl = db.query(Classroom).filter(Classroom.id == classroom_id).first()
+    if not cl:
+        raise HTTPException(status_code=404, detail="Classroom not found.")
+    if cl.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this classroom.")
+    
+    # Clean up any student requests for this classroom
+    db.query(StudentRequest).filter(StudentRequest.classroom_id == classroom_id).delete()
+    db.delete(cl)
+    db.commit()
+    return {"message": f"Classroom '{cl.name}' deleted successfully."}
 
 @router.post("/students/create")
 def create_student_account(data: StudentCreate, db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
@@ -96,7 +227,7 @@ def create_student_account(data: StudentCreate, db: Session = Depends(get_db), c
     
     # Auto enroll if classroom_id provided
     if data.classroom_id:
-        enrollment = Enrollment(student_id=student.id, classroom_id=data.classroom_id)
+        enrollment = Enrollment(student_id=student.id, classroom_id=data.classroom_id, status="approved")
         db.add(enrollment)
         db.commit()
         
@@ -113,9 +244,21 @@ def create_student_account(data: StudentCreate, db: Session = Depends(get_db), c
 @router.get("/students")
 def get_teacher_students(db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
     """
-    Retrieves all student accounts created by the teacher, independent of classrooms.
+    Retrieves all student accounts created by the teacher OR enrolled in teacher's classrooms.
     """
-    students = db.query(User).filter(User.role == "student", User.created_by == current_teacher.id).order_by(User.id.desc()).all()
+    teacher_classrooms = db.query(Classroom).filter(Classroom.teacher_id == current_teacher.id).all()
+    teacher_class_ids = [c.id for c in teacher_classrooms]
+    
+    enrolled_student_ids = []
+    if teacher_class_ids:
+        enr_ids = db.query(Enrollment.student_id).filter(Enrollment.classroom_id.in_(teacher_class_ids)).distinct().all()
+        enrolled_student_ids = [s[0] for s in enr_ids]
+        
+    students = db.query(User).filter(
+        User.role == "student",
+        or_(User.created_by == current_teacher.id, User.id.in_(enrolled_student_ids))
+    ).order_by(User.id.desc()).all()
+    
     res = []
     for s in students:
         enrollments = db.query(Enrollment).filter(Enrollment.student_id == s.id).all()
@@ -127,7 +270,8 @@ def get_teacher_students(db: Session = Depends(get_db), current_teacher: User = 
                     "classroom_id": c.id,
                     "name": c.name,
                     "subject": c.subject,
-                    "join_code": c.join_code
+                    "join_code": c.join_code,
+                    "status": enr.status or "approved"
                 })
         res.append({
             "id": s.id,
@@ -151,9 +295,13 @@ def enroll_student_in_classroom(student_id: int, classroom_id: int, db: Session 
         
     existing = db.query(Enrollment).filter(Enrollment.student_id == student.id, Enrollment.classroom_id == classroom.id).first()
     if existing:
+        if existing.status != "approved":
+            existing.status = "approved"
+            db.commit()
+            return {"message": f"Student {student.name} enrollment in {classroom.name} was approved."}
         return {"message": f"Student {student.name} is already enrolled in {classroom.name}."}
         
-    enr = Enrollment(student_id=student.id, classroom_id=classroom.id)
+    enr = Enrollment(student_id=student.id, classroom_id=classroom.id, status="approved")
     db.add(enr)
     db.commit()
     return {"message": f"Successfully enrolled {student.name} in {classroom.name}."}
@@ -257,14 +405,17 @@ async def preview_source_chunks(
     extracted_text = ""
     if file:
         file_bytes = await file.read()
-        extracted_text = extract_text_from_file_or_image(file_bytes, file.filename)
+        if file.filename.lower().endswith(".pdf"):
+            extracted_text = extract_text_from_pdf(file_bytes)
+        else:
+            extracted_text = file_bytes.decode("utf-8", errors="ignore")
     elif raw_text:
         extracted_text = clean_extracted_text(raw_text)
     else:
-        raise HTTPException(status_code=400, detail="Please upload a document file (PDF, Handwritten Note, Image) or paste source text.")
+        raise HTTPException(status_code=400, detail="Please upload a PDF file or paste source text.")
         
-    if len(extracted_text.strip()) < 15:
-        raise HTTPException(status_code=400, detail="Source text is too short or could not be extracted. Please ensure the document is clear.")
+    if len(extracted_text.strip()) < 20:
+        raise HTTPException(status_code=400, detail="Source text is too short to chunk.")
         
     chunks_data = semantic_chunk_text(extracted_text, target_tokens=400, overlap_pct=0.15)
     
@@ -308,15 +459,18 @@ async def create_unit_with_source(
         with open(file_path, "wb") as f:
             f.write(file_bytes)
             
-        extracted_text = extract_text_from_file_or_image(file_bytes, file.filename)
+        if file.filename.lower().endswith(".pdf"):
+            extracted_text = extract_text_from_pdf(file_bytes)
+        else:
+            extracted_text = clean_extracted_text(file_bytes.decode("utf-8", errors="ignore"))
     elif raw_text:
         extracted_text = clean_extracted_text(raw_text)
     else:
-        raise HTTPException(status_code=400, detail="Please upload a source document (PDF, Handwritten Note, Image) or provide source text.")
+        raise HTTPException(status_code=400, detail="Please upload a PDF source file or provide source text.")
         
     extracted_text = clean_extracted_text(extracted_text).replace('\x00', '')
-    if len(extracted_text.strip()) < 15:
-        raise HTTPException(status_code=400, detail="Source content is too short or unreadable. Please check the document.")
+    if len(extracted_text.strip()) < 30:
+        raise HTTPException(status_code=400, detail="Source content is too short or unreadable.")
         
     # 1. Create Source & SourceVersion
     source = Source(teacher_id=current_teacher.id, title=source_title.strip().replace('\x00', ''))
@@ -437,11 +591,13 @@ def get_unit_details(unit_id: int, db: Session = Depends(get_db), current_teache
                 "id": v.id,
                 "version_no": v.version_no,
                 "status": v.status,
+                "low_confidence": getattr(v, "low_confidence", False) or v_content.get("low_confidence", False),
                 "created_at": v.created_at,
                 "approved_at": v.approved_at,
                 "questions_count": len(v_content.get("questions", [])) if a.type == "quiz" else None
             })
 
+        latest_content = json.loads(latest_ver.content_json) if latest_ver and latest_ver.content_json else {}
         assets_data.append({
             "asset_id": a.id,
             "type": a.type,
@@ -451,7 +607,8 @@ def get_unit_details(unit_id: int, db: Session = Depends(get_db), current_teache
                 "id": latest_ver.id,
                 "version_no": latest_ver.version_no,
                 "status": latest_ver.status,
-                "content_json": json.loads(latest_ver.content_json) if latest_ver else {},
+                "low_confidence": getattr(latest_ver, "low_confidence", False) or latest_content.get("low_confidence", False),
+                "content_json": latest_content,
                 "chunk_ids": json.loads(latest_ver.chunk_ids) if latest_ver and latest_ver.chunk_ids else [],
                 "created_at": latest_ver.created_at,
                 "approved_at": latest_ver.approved_at,
@@ -518,19 +675,31 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
     unit_title = unit.title
     source_id = unit.source_id
 
-    # 1. Cleanly delete all associated assets, quiz items, versions, assignments, and submissions
+    # 1. Cleanly delete Student Help Requests and Responses linked to this unit or its objectives
+    objectives = db.query(Objective).filter(Objective.unit_id == unit.id).all()
+    objective_ids = [o.id for o in objectives]
+    
+    student_reqs = db.query(StudentRequest).filter(
+        (StudentRequest.unit_id == unit.id) | 
+        (StudentRequest.objective_id.in_(objective_ids) if objective_ids else False)
+    ).all()
+    req_ids = [r.id for r in student_reqs]
+    if req_ids:
+        db.query(RequestResponse).filter(RequestResponse.request_id.in_(req_ids)).delete(synchronize_session=False)
+        db.query(StudentRequest).filter(StudentRequest.id.in_(req_ids)).delete(synchronize_session=False)
+
+    # 2. Cleanly delete all QuizItem & QuizItemVersion associated with this unit's assets
     assets = db.query(Asset).filter(Asset.unit_id == unit.id).all()
     asset_ids = [a.id for a in assets]
     
     if asset_ids:
-        # A. Clean up QuizItems and QuizItemVersions attached to these assets
         quiz_items = db.query(QuizItem).filter(QuizItem.asset_id.in_(asset_ids)).all()
-        quiz_item_ids = [qi.id for qi in quiz_items]
-        if quiz_item_ids:
-            db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id.in_(quiz_item_ids)).delete(synchronize_session=False)
-            db.query(QuizItem).filter(QuizItem.id.in_(quiz_item_ids)).delete(synchronize_session=False)
+        qi_ids = [qi.id for qi in quiz_items]
+        if qi_ids:
+            db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id.in_(qi_ids)).delete(synchronize_session=False)
+            db.query(QuizItem).filter(QuizItem.id.in_(qi_ids)).delete(synchronize_session=False)
 
-        # B. Clean up AssetVersions, Assignments, Submissions, and QualityFlags
+        # 3. Cleanly delete all Assignments, Submissions, QualityFlags and AssetVersions
         versions = db.query(AssetVersion).filter(AssetVersion.asset_id.in_(asset_ids)).all()
         version_ids = [v.id for v in versions]
         
@@ -548,31 +717,16 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
         db.query(Asset).filter(Asset.id.in_(asset_ids)).delete(synchronize_session=False)
         db.flush()
 
-    # 2. Clean up StudentRequests and RequestResponses attached to this unit or its objectives
-    objectives = db.query(Objective).filter(Objective.unit_id == unit.id).all()
-    objective_ids = [o.id for o in objectives]
-    
-    req_query = db.query(StudentRequest).filter(
-        (StudentRequest.unit_id == unit.id) |
-        ((StudentRequest.objective_id.in_(objective_ids)) if objective_ids else False)
-    )
-    student_reqs = req_query.all()
-    req_ids = [r.id for r in student_reqs]
-    if req_ids:
-        db.query(RequestResponse).filter(RequestResponse.request_id.in_(req_ids)).delete(synchronize_session=False)
-        db.query(StudentRequest).filter(StudentRequest.id.in_(req_ids)).delete(synchronize_session=False)
-
-    # 3. Delete objectives and glossary
-    if objective_ids:
-        db.query(Objective).filter(Objective.id.in_(objective_ids)).delete(synchronize_session=False)
+    # 4. Delete objectives and glossary
+    db.query(Objective).filter(Objective.unit_id == unit.id).delete(synchronize_session=False)
     db.query(Glossary).filter(Glossary.unit_id == unit.id).delete(synchronize_session=False)
     db.flush()
     
-    # 4. Delete unit
+    # 5. Delete unit
     db.delete(unit)
     db.commit()
     
-    # 5. Source cleanup: if source is only attached to this unit, delete chunks, source pages, and source
+    # 6. Source cleanup: if source is only attached to this unit, delete chunks and source
     if source_id:
         other_units = db.query(Unit).filter(Unit.source_id == source_id).count()
         if other_units == 0:
@@ -580,14 +734,10 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
             if source:
                 s_versions = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).all()
                 sv_ids = [sv.id for sv in s_versions]
+                db.query(SourcePage).filter(SourcePage.source_id == source.id).delete(synchronize_session=False)
                 if sv_ids:
-                    db.query(SourcePage).filter(
-                        (SourcePage.source_id == source.id) | (SourcePage.source_version_id.in_(sv_ids))
-                    ).delete(synchronize_session=False)
                     db.query(Chunk).filter(Chunk.source_version_id.in_(sv_ids)).delete(synchronize_session=False)
                     db.query(SourceVersion).filter(SourceVersion.id.in_(sv_ids)).delete(synchronize_session=False)
-                else:
-                    db.query(SourcePage).filter(SourcePage.source_id == source.id).delete(synchronize_session=False)
                 db.delete(source)
                 db.commit()
                 
@@ -642,11 +792,16 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
     # 3. Formative Quiz
     # 4. Practice Easy
     # 5. Practice Advanced
+    low_conf_ids = set(data.low_confidence_objective_ids or [])
+    low_conf_texts = set(data.low_confidence_objective_texts or [])
+
     for obj in objectives:
+        is_obj_low_conf = (obj.id in low_conf_ids) or (obj.text in low_conf_texts)
+
         # Retrieve candidate chunks for this objective (k=5, min_similarity=0.18)
         matched_chunks, is_gap, sim_score = retrieve_top_k_chunks(obj.text, chunks, top_k=5, min_similarity=0.18)
         
-        if is_gap:
+        if is_gap and not is_obj_low_conf:
             # Insufficient source coverage gap!
             # As per §4.1: flag 'insufficient source for this objective' instead of generating hallucinated content
             gap_explanation = {
@@ -671,7 +826,8 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
                 content_json=json.dumps(gap_explanation),
                 status="needs_revision",
                 source_version_id=latest_source_version.id,
-                chunk_ids="[]"
+                chunk_ids="[]",
+                low_confidence=True
             )
             db.add(asset_ver)
             db.commit()
@@ -693,21 +849,16 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
         q_count = data.quiz_count or obj_constraints.get("quiz_count", 3)
         diff_mode = data.difficulty or obj_constraints.get("difficulty", "Medium")
 
-        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS in parallel
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            f_exp = executor.submit(generate_concept_explanation, obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"))
-            f_ex = executor.submit(generate_worked_example, obj.text, matched_chunks, glossary, "Apply")
-            f_quiz = executor.submit(generate_formative_quiz, obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode)
-            f_easy = executor.submit(generate_differentiated_practice, obj.text, matched_chunks, glossary, "easy")
-            f_adv = executor.submit(generate_differentiated_practice, obj.text, matched_chunks, glossary, "advanced")
-            
-            exp_data = f_exp.result()
-            ex_data = f_ex.result()
-            quiz_data = f_quiz.result()
-            easy_data = f_easy.result()
-            adv_data = f_adv.result()
-
+        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS
+        exp_data = generate_concept_explanation(
+            obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"),
+            is_low_confidence=is_obj_low_conf
+        )
+        ex_data = generate_worked_example(obj.text, matched_chunks, glossary, "Apply")
+        quiz_data = generate_formative_quiz(obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode)
         key_data = generate_answer_key(obj.text, quiz_data, matched_chunks)
+        easy_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "easy")
+        adv_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "advanced")
         rev_data = generate_revision_sheet(obj.text, matched_chunks, exp_data, ex_data, quiz_data, glossary)
 
         asset_blueprints = [
@@ -721,6 +872,9 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
         ]
         
         for asset_type, content_data in asset_blueprints:
+            if is_obj_low_conf:
+                content_data["low_confidence"] = True
+
             # Find or create Asset
             asset = db.query(Asset).filter(Asset.unit_id == unit.id, Asset.objective_id == obj.id, Asset.type == asset_type).first()
             if not asset:
@@ -739,7 +893,8 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
                 content_json=json.dumps(content_data),
                 status="draft",
                 source_version_id=latest_source_version.id,
-                chunk_ids=json.dumps(content_data.get("chunk_ids", []))
+                chunk_ids=json.dumps(content_data.get("chunk_ids", [])),
+                low_confidence=is_obj_low_conf
             )
             db.add(asset_ver)
             db.commit()
@@ -1829,7 +1984,7 @@ def get_classroom_analytics(classroom_id: int, db: Session = Depends(get_db), cu
     a_ids = [a.id for a in assignments]
     submissions = db.query(Submission).filter(Submission.assignment_id.in_(a_ids)).all()
     
-    enrollments = db.query(Enrollment).filter(Enrollment.classroom_id == classroom.id).order_by(Enrollment.joined_at.desc()).all()
+    enrollments = db.query(Enrollment).filter(Enrollment.classroom_id == classroom.id, Enrollment.status == "approved").order_by(Enrollment.joined_at.desc()).all()
     enrolled_students = []
     for enr in enrollments:
         stu = db.query(User).filter(User.id == enr.student_id).first()
@@ -2128,5 +2283,171 @@ def get_classroom_objectives(
                 "bloom_level": o.bloom_level
             })
     return res
+
+
+# -------------------------------------------------------------
+# SOURCE COVERAGE CHECK & GAP DETECTION
+# -------------------------------------------------------------
+@router.post("/check-objective-coverage")
+def check_objective_coverage_endpoint(
+    req: ObjectiveCoverageCheckRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    chunks = []
+    if req.chunks and len(req.chunks) > 0:
+        chunks = [{"text": c, "chunk_index": idx + 1} for idx, c in enumerate(req.chunks)]
+    elif req.unit_id:
+        db_chunks = db.query(Chunk).filter(Chunk.unit_id == req.unit_id).order_by(Chunk.chunk_index).all()
+        chunks = [{"text": c.content, "chunk_index": c.chunk_index, "id": c.id} for c in db_chunks]
+    elif req.source_text and req.source_text.strip():
+        raw_chunks = semantic_chunk_text(req.source_text.strip(), chunk_size=500, overlap=60)
+        chunks = [{"text": c, "chunk_index": idx + 1} for idx, c in enumerate(raw_chunks)]
+
+    threshold = req.threshold if req.threshold is not None else 0.55
+    res = check_objective_source_coverage(req.objective_text, chunks, threshold=threshold)
+    return res
+
+
+
+# -------------------------------------------------------------
+# TEACHER VALIDATION LAYER ENDPOINTS
+# -------------------------------------------------------------
+@router.post("/validate/objective")
+def validate_objective_endpoint(
+    req: ObjectiveValidationRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    existing = req.existing_objectives or []
+    if req.unit_id and not existing:
+        db_objs = db.query(Objective).filter(Objective.unit_id == req.unit_id).all()
+        existing = [o.text for o in db_objs]
+
+    result = validate_learning_objective(
+        text=req.text,
+        target_level=req.target_level,
+        bloom_level=req.bloom_level,
+        existing_objectives=existing,
+        unit_id=req.unit_id,
+        db=db
+    )
+    return result
+
+@router.post("/validate/ocr-correction")
+def validate_ocr_correction_endpoint(
+    req: OCRCorrectionValidationRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    result = validate_ocr_correction(
+        original_ocr_text=req.original_ocr_text,
+        teacher_text=req.teacher_text,
+        page_id=req.page_id,
+        page_number=req.page_number,
+        db=db
+    )
+    return result
+
+@router.post("/validate/glossary-term")
+def validate_glossary_term_endpoint(
+    req: GlossaryTermValidationRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    chunks = req.source_chunks or []
+    if req.unit_id and not chunks:
+        db_chunks = db.query(Chunk).filter(Chunk.unit_id == req.unit_id).all()
+        chunks = [c.content for c in db_chunks]
+
+    result = validate_glossary_term(
+        term=req.term,
+        canonical_wording=req.canonical_wording or "",
+        source_chunks=chunks,
+        glossary_id=req.glossary_id,
+        db=db
+    )
+    return result
+
+@router.post("/validate/asset-edit")
+def validate_asset_edit_endpoint(
+    req: AssetEditValidationRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    source_chunks = []
+    objectives = []
+    unit_id = req.unit_id
+    
+    if req.version_id and not unit_id:
+        v = db.query(AssetVersion).filter(AssetVersion.id == req.version_id).first()
+        if v and v.asset:
+            unit_id = v.asset.unit_id
+            
+    if unit_id:
+        db_chunks = db.query(Chunk).filter(Chunk.unit_id == unit_id).all()
+        source_chunks = [c.content for c in db_chunks]
+        db_objs = db.query(Objective).filter(Objective.unit_id == unit_id).all()
+        objectives = [o.text for o in db_objs]
+
+    result = validate_asset_edit(
+        asset_type=req.asset_type,
+        content_json=req.content_json,
+        source_chunks=source_chunks,
+        objectives=objectives,
+        version_id=req.version_id,
+        db=db
+    )
+    return result
+
+@router.post("/validation-flags/{flag_id}/resolve")
+def resolve_validation_flag_endpoint(
+    flag_id: int,
+    req: ValidationFlagResolutionRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    flag = db.query(ValidationFlag).filter(ValidationFlag.id == flag_id).first()
+    if not flag:
+        raise HTTPException(status_code=404, detail="Validation flag not found")
+        
+    flag.resolution = req.resolution
+    flag.resolved_at = datetime.utcnow()
+    db.commit()
+    db.refresh(flag)
+    return {
+        "id": flag.id,
+        "target_type": flag.target_type,
+        "resolution": flag.resolution,
+        "resolved_at": flag.resolved_at.isoformat() if flag.resolved_at else None,
+        "message": f"Validation flag resolved as '{req.resolution}'"
+    }
+
+@router.get("/validation-flags")
+def get_validation_flags_endpoint(
+    target_type: Optional[str] = None,
+    resolution: Optional[str] = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    query = db.query(ValidationFlag)
+    if target_type:
+        query = query.filter(ValidationFlag.target_type == target_type)
+    if resolution:
+        query = query.filter(ValidationFlag.resolution == resolution)
+    flags = query.order_by(ValidationFlag.created_at.desc()).limit(limit).all()
+    return [{
+        "id": f.id,
+        "target_type": f.target_type,
+        "target_id": f.target_id,
+        "original_value": f.original_value,
+        "suggested_value": f.suggested_value,
+        "reason": f.reason,
+        "resolution": f.resolution,
+        "created_at": f.created_at.isoformat() if f.created_at else None,
+        "resolved_at": f.resolved_at.isoformat() if f.resolved_at else None
+    } for f in flags]
+
 
 

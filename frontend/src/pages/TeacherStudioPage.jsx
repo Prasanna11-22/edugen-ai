@@ -6,12 +6,14 @@ import {
   BookOpen, Edit3, RefreshCw, Send, Check, ShieldCheck, Hash, Target, 
   ArrowRight, ShieldAlert, FileCode, CheckSquare, Plus, Trash2, Calendar, Clock,
   Eye, BarChart3, Users, ChevronRight, FileCheck, Search, HelpCircle, Library, Database, Lock, X, Key, Lightbulb, History, CheckCheck,
-  Image as ImageIcon
+  Sliders, Scan, ChevronDown, ChevronUp
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
 import ProvenanceViewer from '../components/ProvenanceViewer';
 import GuardrailAlerts from '../components/GuardrailAlerts';
+import ValidationSuggestionModal from '../components/ValidationSuggestionModal';
+import CoverageWarningModal from '../components/CoverageWarningModal';
 
 const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => {
   const { token, user } = useAuth();
@@ -31,11 +33,20 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const [unitTitle, setUnitTitle] = useState('');
   const [sourceTitle, setSourceTitle] = useState('');
   const [sourceFile, setSourceFile] = useState(null);
-  const [filePreviewUrl, setFilePreviewUrl] = useState(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [sourceRawText, setSourceRawText] = useState('');
   const [previewChunksData, setPreviewChunksData] = useState(null);
   const [parsingChunks, setParsingChunks] = useState(false);
+
+  // OCR & Review-by-Exception State
+  const [ingestMode, setIngestMode] = useState('direct_pdf'); // 'direct_pdf' | 'ocr_review'
+  const [ocrFiles, setOcrFiles] = useState([]);
+  const [ocrThreshold, setOcrThreshold] = useState(85); // 85% default
+  const [ocrScanning, setOcrScanning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState({ current: 0, total: 0, percent: 0, message: '' });
+  const [ocrBatchResult, setOcrBatchResult] = useState(null);
+  const [ocrPages, setOcrPages] = useState([]);
+  const [showAutoAcceptedPages, setShowAutoAcceptedPages] = useState(false);
+  const [ocrPageEditTexts, setOcrPageEditTexts] = useState({});
 
   // Step 2 State
   const [objectives, setObjectives] = useState([
@@ -90,6 +101,34 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     edit_reason: ''
   });
   const [savingQuestionEdit, setSavingQuestionEdit] = useState(false);
+
+  // Validation Advisory State
+  const [validationModalOpen, setValidationModalOpen] = useState(false);
+  const [validationConfig, setValidationConfig] = useState({
+    title: 'Input Validation Advisory',
+    targetType: 'objective',
+    issues: [],
+    onApply: null,
+    onKeep: null,
+    onEditFurther: null
+  });
+  const [validatingObjectiveIdx, setValidatingObjectiveIdx] = useState(null);
+
+  // Glossary Editing State
+  const [editingGlossaryId, setEditingGlossaryId] = useState(null);
+  const [glossaryEditData, setGlossaryEditData] = useState({ term: '', canonical_wording: '' });
+  const [savingGlossary, setSavingGlossary] = useState(false);
+
+  // Source Coverage Warning Modal State
+  const [coverageModalOpen, setCoverageModalOpen] = useState(false);
+  const [coverageWarningData, setCoverageWarningData] = useState({
+    objectiveIndex: null,
+    objectiveText: '',
+    bestMatchScore: 0,
+    threshold: 55,
+    coverageNote: ''
+  });
+  const [lowConfidenceObjTexts, setLowConfidenceObjTexts] = useState([]);
 
   useEffect(() => {
     fetchClassrooms();
@@ -157,11 +196,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     let data = null;
     try {
       data = JSON.parse(text);
-    } catch (parseErr) {
-      if (!res.ok) {
-        throw new Error(text && text.length < 150 ? text : `Server error (${res.status})`);
-      }
-      return text;
+    } catch {
+      data = null;
     }
 
     if (!res.ok) {
@@ -176,86 +212,238 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         } else {
           msg = JSON.stringify(data);
         }
+      } else if (text && text.trim().length > 0 && text.length < 200) {
+        msg = text.trim();
+      } else {
+        msg = `Server Error (${res.status})`;
       }
       throw new Error(msg);
     }
-    return data;
+
+    return data !== null ? data : text;
   };
 
-  const handleFileSelect = (file) => {
-    if (!file) return;
-    setSourceFile(file);
-    if (file.type && file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setFilePreviewUrl(url);
-    } else {
-      setFilePreviewUrl(null);
+  // Multi-Page OCR Batch Handler with concurrent processing & progress
+  const handleRunOCRBatch = async (filesToProcess = null) => {
+    const files = filesToProcess || ocrFiles;
+    if (!files || files.length === 0) {
+      showToast("Please choose scanned page images or document files for OCR.", "error");
+      return;
     }
-    
-    // Auto populate titles if blank
-    const cleanName = file.name
-      .replace(/\.[^/.]+$/, "")
-      .replace(/[-_]/g, " ")
-      .trim();
-    if (cleanName) {
-      if (!sourceTitle) setSourceTitle(cleanName);
-      if (!unitTitle) setUnitTitle(cleanName);
-    }
-    showToast(`Loaded "${file.name}" for OCR & Semantic Processing.`, "success");
-  };
 
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
+    setOcrScanning(true);
+    setOcrProgress({
+      current: 1,
+      total: files.length,
+      percent: 10,
+      message: `Processing page 1 of ${files.length}...`
+    });
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((f) => formData.append('files', f));
+      formData.append('confidence_threshold', (ocrThreshold / 100).toString());
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      handleFileSelect(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleRemoveFile = (e) => {
-    if (e) {
-      e.stopPropagation();
-      e.preventDefault();
-    }
-    setSourceFile(null);
-    if (filePreviewUrl) {
-      URL.revokeObjectURL(filePreviewUrl);
-      setFilePreviewUrl(null);
-    }
-  };
-
-  useEffect(() => {
-    const handlePaste = (e) => {
-      if (activeStudioTab !== 'ingest') return;
-      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
-        const file = e.clipboardData.files[0];
-        if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-          handleFileSelect(file);
-          showToast(`Pasted image from clipboard (${file.name || 'image.png'})!`, "success");
+      // Live progress simulation for smooth teacher UX while concurrent workers execute
+      let currentProgress = 1;
+      const progressTimer = setInterval(() => {
+        if (currentProgress < files.length) {
+          currentProgress += Math.min(2, files.length - currentProgress);
+          setOcrProgress({
+            current: currentProgress,
+            total: files.length,
+            percent: Math.min(95, Math.round((currentProgress / files.length) * 100)),
+            message: `Processing page ${currentProgress} of ${files.length}...`
+          });
         }
+      }, 350);
+
+      const res = await fetch('/api/ocr/batch', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+
+      clearInterval(progressTimer);
+
+      const data = await safeApiResponse(res, 'Batch OCR processing failed');
+      if (!res.ok) throw new Error(data.detail || data.message || 'Batch OCR failed');
+
+      setOcrBatchResult(data);
+      setOcrPages(data.pages || []);
+      
+      const initialEditTexts = {};
+      (data.pages || []).forEach(p => {
+        initialEditTexts[p.page_number] = p.reviewed_text || p.ocr_raw_text || '';
+      });
+      setOcrPageEditTexts(initialEditTexts);
+
+      // Auto-update source raw text with consolidated text
+      const fullText = (data.pages || []).map(p => p.reviewed_text || p.ocr_raw_text || '').join('\n\n');
+      setSourceRawText(fullText);
+
+      setOcrProgress({
+        current: files.length,
+        total: files.length,
+        percent: 100,
+        message: `Completed OCR for all ${files.length} pages!`
+      });
+
+      showToast(`✨ ${data.auto_accepted_count} of ${data.total_pages} pages auto-accepted. ${data.needs_review_count} need your review.`, "success");
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setOcrScanning(false);
+    }
+  };
+
+  const resolveValidationFlag = async (flagId, resolution) => {
+    if (!flagId) return;
+    try {
+      await fetch(`/api/teacher/validation-flags/${flagId}/resolve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ resolution })
+      });
+    } catch (e) {
+      console.warn("Could not resolve validation flag:", e);
+    }
+  };
+
+  const executeReviewPage = async (pageNum, newStatus, textToSave) => {
+    const targetPage = ocrPages.find(p => p.page_number === pageNum);
+    const updatedPages = ocrPages.map(p => {
+      if (p.page_number === pageNum) {
+        return { ...p, reviewed_text: textToSave, review_status: newStatus };
       }
-    };
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [activeStudioTab, sourceTitle, unitTitle]);
+      return p;
+    });
+    setOcrPages(updatedPages);
+
+    const autoAccepted = updatedPages.filter(p => p.review_status === 'auto_accepted').length;
+    const needsReview = updatedPages.filter(p => p.review_status === 'needs_review').length;
+    const reviewed = updatedPages.filter(p => p.review_status === 'reviewed').length;
+
+    setOcrBatchResult(prev => ({
+      ...prev,
+      auto_accepted_count: autoAccepted,
+      needs_review_count: needsReview,
+      reviewed_count: reviewed,
+      can_proceed_to_chunking: needsReview === 0
+    }));
+
+    const fullText = updatedPages.map(p => p.reviewed_text || p.ocr_raw_text || '').join('\n\n');
+    setSourceRawText(fullText);
+
+    if (targetPage && targetPage.id) {
+      try {
+        await fetch(`/api/ocr/pages/${targetPage.id}/review`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            reviewed_text: textToSave,
+            review_status: newStatus
+          })
+        });
+      } catch (e) {
+        console.warn("Could not save review to DB:", e);
+      }
+    }
+
+    showToast(`Page ${pageNum} marked as ${newStatus === 'reviewed' ? 'Reviewed' : 'Approved'}.`, "success");
+  };
+
+  const handleReviewPage = async (pageNum, newStatus = 'reviewed') => {
+    const updatedText = ocrPageEditTexts[pageNum] || '';
+    const targetPage = ocrPages.find(p => p.page_number === pageNum);
+
+    // Advisory OCR Validation Trigger Point: if text changed, check discrepancy
+    if (targetPage && updatedText.trim() && updatedText.trim() !== (targetPage.ocr_raw_text || '').trim()) {
+      try {
+        const vRes = await fetch('/api/teacher/validate/ocr-correction', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            original_ocr_text: targetPage.ocr_raw_text || '',
+            teacher_text: updatedText,
+            page_id: targetPage.id || null,
+            page_number: pageNum
+          })
+        });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (vData.is_flagged && vData.issues?.length > 0) {
+            setValidationConfig({
+              title: `OCR Correction Advisory - Page ${pageNum}`,
+              targetType: 'ocr_correction',
+              issues: vData.issues,
+              onApply: (suggested, issue) => {
+                resolveValidationFlag(issue.flag_id, 'used_suggestion');
+                setOcrPageEditTexts(prev => ({ ...prev, [pageNum]: suggested }));
+                setValidationModalOpen(false);
+                executeReviewPage(pageNum, newStatus, suggested);
+              },
+              onKeep: (original, issue) => {
+                resolveValidationFlag(issue.flag_id, 'kept_original');
+                setValidationModalOpen(false);
+                executeReviewPage(pageNum, newStatus, original);
+              },
+              onEditFurther: (original, issue) => {
+                resolveValidationFlag(issue.flag_id, 'edited_manually');
+                setValidationModalOpen(false);
+              }
+            });
+            setValidationModalOpen(true);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("OCR validation check error:", err);
+      }
+    }
+
+    await executeReviewPage(pageNum, newStatus, updatedText);
+  };
+
+  const handleAcceptAllFlaggedPages = () => {
+    const updatedPages = ocrPages.map(p => {
+      if (p.review_status === 'needs_review') {
+        return { ...p, review_status: 'reviewed', reviewed_text: ocrPageEditTexts[p.page_number] || p.ocr_raw_text };
+      }
+      return p;
+    });
+
+    setOcrPages(updatedPages);
+    const autoAccepted = updatedPages.filter(p => p.review_status === 'auto_accepted').length;
+    const reviewed = updatedPages.filter(p => p.review_status === 'reviewed').length;
+
+    setOcrBatchResult(prev => ({
+      ...prev,
+      auto_accepted_count: autoAccepted,
+      needs_review_count: 0,
+      reviewed_count: reviewed,
+      can_proceed_to_chunking: true
+    }));
+
+    const fullText = updatedPages.map(p => p.reviewed_text || p.ocr_raw_text || '').join('\n\n');
+    setSourceRawText(fullText);
+
+    showToast("All flagged pages approved! You can now proceed to semantic chunking.", "success");
+  };
 
   // Instant Chunk Parser Handler
   const handleParseAndChunkSource = async () => {
     if (!sourceFile && !sourceRawText.trim()) {
-      showToast("Please upload a handwritten note image, PDF, or paste text to parse.", "error");
+      showToast("Please choose a PDF file or paste text to parse.", "error");
       return;
     }
 
@@ -272,6 +460,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       });
 
       const data = await safeApiResponse(res, 'Parsing failed');
+      if (!res.ok) throw new Error(data.detail || data.message || 'Parsing failed');
+
       setPreviewChunksData(data);
       showToast(`Extracted ${data.total_chunks} semantic chunks (${data.total_tokens_estimated} tokens)!`, "success");
     } catch (err) {
@@ -281,25 +471,14 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     }
   };
 
-  const handleCreateUnitAndUpload = async (e) => {
-    e.preventDefault();
-    if (!unitTitle.trim() || !sourceTitle.trim()) {
-      showToast("Please specify unit and source titles.", "error");
-      return;
-    }
-    if (!sourceFile && !sourceRawText.trim()) {
-      showToast("Please upload a handwritten note, document (PDF/Image), or paste curriculum text in Step 1.", "error");
-      // Scroll smoothly to top so user sees Step 1
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-
+  const executeCreateUnit = async (customObjectives = null, lowConfTexts = []) => {
+    const objsToUse = customObjectives || objectives;
     setGenerating(true);
     try {
       const formData = new FormData();
       formData.append('title', unitTitle);
       formData.append('source_title', sourceTitle);
-      const formattedObjectives = objectives.map(o => ({
+      const formattedObjectives = objsToUse.map(o => ({
         text: o.text,
         bloom_level: o.bloom_level,
         target_level: o.target_level,
@@ -320,12 +499,13 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       });
 
       const data = await safeApiResponse(res, 'Upload failed');
+      if (!res.ok) throw new Error(data.detail || data.message || 'Upload failed');
 
       const newUnitId = data.unit_id;
       setCurrentUnitId(newUnitId);
       
-      // Immediately generate full pack in Draft mode for teacher review
-      await handleGenerateFullPackWithUnit(newUnitId);
+      // Immediately generate full pack in Draft mode for teacher review with low confidence tags
+      await handleGenerateFullPackWithUnit(newUnitId, lowConfTexts);
       await fetchAllUnits();
       setActiveStudioTab('review');
     } catch (err) {
@@ -334,7 +514,148 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     }
   };
 
-  const handleGenerateFullPackWithUnit = async (unitId) => {
+  const handleValidateObjective = async (idx) => {
+    const targetObj = objectives[idx];
+    if (!targetObj || !targetObj.text.trim()) {
+      showToast("Please enter an objective description first.", "error");
+      return;
+    }
+    setValidatingObjectiveIdx(idx);
+    try {
+      const otherObjs = objectives.filter((_, i) => i !== idx).map(o => o.text).filter(Boolean);
+      const vRes = await fetch('/api/teacher/validate/objective', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          text: targetObj.text,
+          bloom_level: targetObj.bloom_level,
+          target_level: targetObj.target_level,
+          existing_objectives: otherObjs,
+          unit_id: currentUnitId || null
+        })
+      });
+      if (vRes.ok) {
+        const vData = await vRes.json();
+        if (vData.is_flagged && vData.issues?.length > 0) {
+          setValidationConfig({
+            title: `Objective #${idx + 1} Pedagogical Advisory`,
+            targetType: 'objective',
+            issues: vData.issues,
+            onApply: (suggested, issue) => {
+              resolveValidationFlag(issue.flag_id, 'used_suggestion');
+              updateObjective(idx, 'text', suggested);
+              setValidationModalOpen(false);
+              showToast("Applied recommended objective wording!", "success");
+            },
+            onKeep: (original, issue) => {
+              resolveValidationFlag(issue.flag_id, 'kept_original');
+              setValidationModalOpen(false);
+              showToast("Retained original objective wording.", "info");
+            },
+            onEditFurther: (original, issue) => {
+              resolveValidationFlag(issue.flag_id, 'edited_manually');
+              setValidationModalOpen(false);
+            }
+          });
+          setValidationModalOpen(true);
+        } else {
+          showToast(`Objective #${idx + 1} is clear, specific, and measurable!`, "success");
+        }
+      }
+    } catch (err) {
+      console.warn("Objective validation check failed:", err);
+    } finally {
+      setValidatingObjectiveIdx(null);
+    }
+  };
+
+  const handleCreateUnitAndUpload = async (e) => {
+    e.preventDefault();
+    if (!unitTitle.trim() || !sourceTitle.trim()) {
+      showToast("Please specify unit and source titles.", "error");
+      return;
+    }
+    
+    // Check OCR review gate
+    if (ocrBatchResult && ocrBatchResult.needs_review_count > 0) {
+      showToast(`⚠ Chunking blocked: ${ocrBatchResult.needs_review_count} page(s) below ${ocrThreshold}% confidence require review before proceeding.`, "error");
+      return;
+    }
+
+    if (!sourceFile && !sourceRawText.trim()) {
+      showToast("Please upload a PDF source document or paste authoritative text.", "error");
+      return;
+    }
+
+    // Prepare chunks for source coverage validation
+    let availableChunks = previewChunksData?.chunks?.map(c => c.text) || [];
+    if (availableChunks.length === 0 && sourceFile && !sourceRawText.trim()) {
+      try {
+        const fd = new FormData();
+        fd.append('file', sourceFile);
+        const pRes = await fetch('/api/teacher/preview-chunks', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: fd
+        });
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData.chunks) {
+            availableChunks = pData.chunks.map(c => c.text);
+            setPreviewChunksData(pData);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not preview chunks for coverage check:", err);
+      }
+    }
+
+    // Source Coverage Check: Evaluate each objective against source chunks
+    for (let i = 0; i < objectives.length; i++) {
+      const obj = objectives[i];
+      const cleanText = obj.text.trim();
+      if (cleanText && !lowConfidenceObjTexts.includes(cleanText)) {
+        try {
+          const covRes = await fetch('/api/teacher/check-objective-coverage', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              objective_text: cleanText,
+              source_text: sourceRawText?.trim() || null,
+              chunks: availableChunks.length > 0 ? availableChunks : null,
+              threshold: 0.55
+            })
+          });
+          if (covRes.ok) {
+            const covData = await covRes.json();
+            if (!covData.is_covered && covData.best_match_score < covData.threshold) {
+              setCoverageWarningData({
+                objectiveIndex: i,
+                objectiveText: cleanText,
+                bestMatchScore: covData.best_match_score,
+                threshold: covData.threshold,
+                coverageNote: covData.source_coverage_note
+              });
+              setCoverageModalOpen(true);
+              return; // Stop and display popup for teacher decision
+            }
+          }
+        } catch (err) {
+          console.warn("Objective coverage check failed:", err);
+        }
+      }
+    }
+
+    await executeCreateUnit(objectives, lowConfidenceObjTexts);
+  };
+
+  const handleGenerateFullPackWithUnit = async (unitId, lowConfTexts = []) => {
     setGenerating(true);
     try {
       const res = await fetch('/api/teacher/generate-learning-pack', {
@@ -343,7 +664,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ unit_id: unitId })
+        body: JSON.stringify({
+          unit_id: unitId,
+          low_confidence_objective_texts: lowConfTexts
+        })
       });
       const data = await safeApiResponse(res, 'Generation failed');
       if (!res.ok) throw new Error(data.detail || data.message || 'Generation failed');
@@ -508,9 +832,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     }
   };
 
-  const handleSaveEdit = async (versionId) => {
+  const executeSaveEdit = async (versionId, parsed) => {
     try {
-      const parsed = JSON.parse(editText);
       const res = await fetch(`/api/teacher/asset-versions/${versionId}/inline-edit`, {
         method: 'PUT',
         headers: {
@@ -532,8 +855,148 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         showToast(errData.detail || "Failed to save asset edit", "error");
       }
     } catch (err) {
-      showToast("Invalid JSON syntax or save error.", "error");
+      showToast("Save error: " + err.message, "error");
     }
+  };
+
+  const handleSaveEdit = async (versionId) => {
+    try {
+      const parsed = JSON.parse(editText);
+
+      // Trigger 4: Asset Edit Validation Check against Grounding & Quality Guardrails
+      try {
+        const vRes = await fetch('/api/teacher/validate/asset-edit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            asset_type: activeAssetTab,
+            content_json: parsed,
+            unit_id: currentUnitId,
+            version_id: versionId
+          })
+        });
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (vData.is_flagged && vData.issues?.length > 0) {
+            setValidationConfig({
+              title: 'Asset Grounding & Integrity Advisory',
+              targetType: 'asset_edit',
+              issues: vData.issues,
+              onApply: (suggested, issue) => {
+                resolveValidationFlag(issue.flag_id, 'used_suggestion');
+                setValidationModalOpen(false);
+                executeSaveEdit(versionId, parsed);
+              },
+              onKeep: (original, issue) => {
+                resolveValidationFlag(issue.flag_id, 'kept_original');
+                setValidationModalOpen(false);
+                executeSaveEdit(versionId, parsed);
+              },
+              onEditFurther: (original, issue) => {
+                resolveValidationFlag(issue.flag_id, 'edited_manually');
+                setValidationModalOpen(false);
+              }
+            });
+            setValidationModalOpen(true);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn("Asset edit validation check failed:", e);
+      }
+
+      await executeSaveEdit(versionId, parsed);
+    } catch (err) {
+      showToast("Invalid JSON syntax: " + err.message, "error");
+    }
+  };
+
+  // Trigger 3: Glossary Term Editing & Validation
+  const executeSaveGlossary = async (glossaryId, term, canonicalWording, flagId = null, resolution = null) => {
+    setSavingGlossary(true);
+    try {
+      if (flagId && resolution) {
+        await resolveValidationFlag(flagId, resolution);
+      }
+      const res = await fetch(`/api/teacher/glossary/${glossaryId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          term: term.trim(),
+          canonical_wording: canonicalWording.trim()
+        })
+      });
+      if (res.ok) {
+        showToast("Glossary term updated successfully.", "success");
+        setEditingGlossaryId(null);
+        await fetchUnitDetails(currentUnitId);
+      } else {
+        const errData = await safeApiResponse(res);
+        showToast(errData.detail || "Failed to update glossary term.", "error");
+      }
+    } catch (err) {
+      showToast("Error updating glossary term: " + err.message, "error");
+    } finally {
+      setSavingGlossary(false);
+    }
+  };
+
+  const handleSaveGlossaryTerm = async (glossaryId) => {
+    const { term, canonical_wording } = glossaryEditData;
+    if (!term.trim()) {
+      showToast("Term name cannot be empty.", "error");
+      return;
+    }
+
+    try {
+      const vRes = await fetch('/api/teacher/validate/glossary-term', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          term: term.trim(),
+          canonical_wording: canonical_wording.trim(),
+          unit_id: currentUnitId,
+          glossary_id: glossaryId
+        })
+      });
+      if (vRes.ok) {
+        const vData = await vRes.json();
+        if (vData.is_flagged && vData.issues?.length > 0) {
+          setValidationConfig({
+            title: 'Glossary Grounding & Spelling Advisory',
+            targetType: 'glossary_term',
+            issues: vData.issues,
+            onApply: (suggested, issue) => {
+              setValidationModalOpen(false);
+              executeSaveGlossary(glossaryId, suggested, canonical_wording, issue.flag_id, 'used_suggestion');
+            },
+            onKeep: (original, issue) => {
+              setValidationModalOpen(false);
+              executeSaveGlossary(glossaryId, original, canonical_wording, issue.flag_id, 'kept_original');
+            },
+            onEditFurther: (original, issue) => {
+              resolveValidationFlag(issue.flag_id, 'edited_manually');
+              setValidationModalOpen(false);
+            }
+          });
+          setValidationModalOpen(true);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Glossary validation check failed:", e);
+    }
+
+    await executeSaveGlossary(glossaryId, term, canonical_wording);
   };
 
   // Per-Question Handlers
@@ -914,26 +1377,51 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       {activeStudioTab === 'ingest' && (
         <form onSubmit={handleCreateUnitAndUpload} className="space-y-8 animate-in fade-in">
           
-          {/* STEP 1: Two-Column Upload & Semantic Chunker Inspector */}
-          <div className="rounded-2xl glass-panel p-6 sm:p-7 border border-neon-orange/30 shadow-neon space-y-4">
-            <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-800">
+          {/* STEP 1: Two-Column Upload, OCR Review Gate & Semantic Chunker Inspector */}
+          <div className="rounded-2xl glass-panel p-6 sm:p-7 border border-neon-orange/30 shadow-neon space-y-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-800">
               <div>
                 <div className="flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-neon-orange" />
+                  <Scan className="w-5 h-5 text-neon-orange" />
                   <h3 className="text-lg font-bold text-white">
-                    Step 1: Upload Source Document (Trusted Boundary)
+                    Step 1: Source Ingest & Multimodal OCR Review Gate
                   </h3>
                 </div>
                 <p className="text-xs text-slate-300 mt-1">
-                  The uploaded PDF/text is parsed layout-aware into 300-600 token semantic chunks. Every generated sentence is strictly grounded in these chunks.
+                  Upload scanned book chapters, handwritten notes, or digital documents. High-confidence pages (≥85%) are automatically accepted, while exception pages are flagged for quick review.
                 </p>
               </div>
-              <Badge variant="bloom">Authoritative Ingest</Badge>
+              
+              {/* Ingest Mode Switch */}
+              <div className="flex items-center gap-1.5 bg-dark-950 p-1 rounded-xl border border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIngestMode('direct_pdf')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                    ingestMode === 'direct_pdf'
+                      ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" /> Direct PDF / Text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIngestMode('ocr_review')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
+                    ingestMode === 'ocr_review'
+                      ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Scan className="w-3.5 h-3.5" /> Scanned Pages OCR
+                </button>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1">
               
-              {/* LEFT COLUMN: Inputs & Ingest Form */}
+              {/* LEFT COLUMN: Ingest Inputs & OCR Control */}
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
@@ -946,9 +1434,9 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       setSourceTitle(e.target.value);
                       if (!unitTitle) setUnitTitle(e.target.value);
                     }}
-                    placeholder="e.g. Chapter 4: Thermodynamics & Heat Engines"
+                    placeholder="e.g. Chapter 4: Distributed Networking & Transport Layers"
                     required
-                    className="w-full rounded-xl glass-input p-2.5 text-xs"
+                    className="w-full rounded-xl glass-input p-2.5 text-xs font-semibold"
                   />
                 </div>
 
@@ -960,140 +1448,162 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     type="text"
                     value={unitTitle}
                     onChange={(e) => setUnitTitle(e.target.value)}
-                    placeholder="e.g. Unit 4: Heat Engines & Entropy Cycles"
+                    placeholder="e.g. Unit 4: TCP Handshake, UDP Sockets & Flow Control"
                     required
-                    className="w-full rounded-xl glass-input p-2.5 text-xs"
+                    className="w-full rounded-xl glass-input p-2.5 text-xs font-semibold"
                   />
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      Upload Source Document / Handwritten Notes
-                    </label>
-                    <span className="text-[10px] font-mono text-neon-amber flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-neon-orange" /> Vision OCR Active
-                    </span>
-                  </div>
+                {/* MODE 1: Scanned Pages OCR with Review-by-Exception */}
+                {ingestMode === 'ocr_review' && (
+                  <div className="p-4 rounded-xl bg-dark-950/90 border border-slate-800 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase text-neon-orange flex items-center gap-1.5">
+                        <Upload className="w-4 h-4 text-neon-orange" /> Upload Scanned Document Pages:
+                      </span>
+                      <div className="flex items-center gap-1.5 bg-dark-900 px-2 py-0.5 rounded border border-slate-700 text-[10px] font-mono text-neon-amber font-bold">
+                        <Sliders className="w-3 h-3 text-neon-amber" /> Gate Threshold: {ocrThreshold}%
+                      </div>
+                    </div>
 
-                  {/* Enhanced Drag & Drop Upload Zone */}
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    className={`relative rounded-2xl border-2 border-dashed transition-all p-4 text-center cursor-pointer ${
-                      isDragging
-                        ? 'border-neon-orange bg-neon-orange/10 scale-[1.01]'
-                        : sourceFile
-                        ? 'border-emerald-500/50 bg-dark-900/80'
-                        : 'border-slate-700/80 hover:border-neon-orange/60 bg-dark-900/40'
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      id="source-file-input"
-                      accept=".pdf,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.heic,.heif,.txt,image/*,application/pdf"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files.length > 0) {
-                          handleFileSelect(e.target.files[0]);
-                        }
-                      }}
-                      className="hidden"
-                    />
-
-                    {!sourceFile ? (
-                      <label htmlFor="source-file-input" className="cursor-pointer block py-3 space-y-2">
-                        <div className="w-10 h-10 mx-auto rounded-full bg-neon-orange/10 border border-neon-orange/30 flex items-center justify-center text-neon-orange">
-                          <Upload className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold text-slate-200">
-                            <span className="text-neon-orange underline underline-offset-2">Click to browse</span> or drag & drop file here
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-1">
-                            Handwritten Notes, Phone Photos (PNG, JPG), Scanned Documents, PDFs, or paste screenshot (Ctrl+V)
-                          </p>
-                        </div>
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                      <label className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-semibold cursor-pointer shadow-neon-sm transition-all shrink-0 flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" /> Select Scanned Page Images / PDF
+                        <input
+                          type="file"
+                          multiple
+                          accept=".png,.jpg,.jpeg,.webp,.pdf"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            setOcrFiles(files);
+                            if (files.length > 0 && !sourceTitle) {
+                              setSourceTitle(files[0].name.replace(/\.[^/.]+$/, ""));
+                            }
+                          }}
+                          className="hidden"
+                        />
                       </label>
-                    ) : (
-                      <div className="flex items-center gap-3 text-left">
-                        {filePreviewUrl ? (
-                          <div className="relative group shrink-0">
-                            <img
-                              src={filePreviewUrl}
-                              alt="Source Preview"
-                              className="w-14 h-14 object-cover rounded-xl border border-neon-orange/40 shadow-sm"
-                            />
-                            <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Eye className="w-4 h-4 text-white" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="w-12 h-12 rounded-xl bg-neon-orange/10 border border-neon-orange/30 flex items-center justify-center shrink-0">
-                            <FileText className="w-6 h-6 text-neon-orange" />
-                          </div>
-                        )}
+                      <span className="text-xs font-mono text-slate-300 truncate">
+                        {ocrFiles.length > 0 ? `${ocrFiles.length} file(s) selected` : 'No scanned files chosen'}
+                      </span>
+                    </div>
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-white truncate max-w-[220px]">
-                              {sourceFile.name}
-                            </span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 border border-emerald-500/40 text-emerald-400">
-                              {(sourceFile.size / 1024 > 1024)
-                                ? `${(sourceFile.size / (1024 * 1024)).toFixed(1)} MB`
-                                : `${(sourceFile.size / 1024).toFixed(0)} KB`}
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-1 mt-0.5">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Attached & ready for Multimodal OCR
+                    {/* Threshold Configurator Slider */}
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-slate-400">Review-by-Exception Threshold:</span>
+                        <span className="font-mono font-bold text-neon-amber">{ocrThreshold}% Confidence</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="70"
+                        max="95"
+                        step="1"
+                        value={ocrThreshold}
+                        onChange={(e) => setOcrThreshold(Number(e.target.value))}
+                        className="w-full accent-neon-orange h-1.5 bg-dark-900 rounded-lg cursor-pointer"
+                      />
+                      <span className="text-[10px] text-slate-500 block">
+                        Pages at or above {ocrThreshold}% skip review automatically. Only pages below {ocrThreshold}% enter the exception queue.
+                      </span>
+                    </div>
+
+                    {/* Progress Indicator Bar during Batch Scan */}
+                    {ocrScanning && (
+                      <div className="p-3.5 rounded-xl bg-dark-900 border border-neon-orange/40 space-y-2 animate-in fade-in">
+                        <div className="flex items-center justify-between text-xs font-mono">
+                          <span className="text-neon-orange font-bold flex items-center gap-1.5">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-neon-orange" />
+                            {ocrProgress.message || `Processing page ${ocrProgress.current} of ${ocrProgress.total}...`}
                           </span>
+                          <span className="text-neon-amber font-bold">{ocrProgress.percent}%</span>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={handleRemoveFile}
-                          className="p-1.5 rounded-lg bg-red-950/40 border border-red-500/30 text-red-400 hover:bg-red-900/60 transition-colors"
-                          title="Remove file"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                        <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
+                          <div
+                            className="h-full bg-gradient-to-r from-neon-orange via-neon-amber to-emerald-400 transition-all duration-300"
+                            style={{ width: `${ocrProgress.percent}%` }}
+                          />
+                        </div>
                       </div>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleRunOCRBatch()}
+                      disabled={ocrScanning || ocrFiles.length === 0}
+                      className="btn-royal text-xs flex items-center gap-2 py-2 px-4 w-full justify-center disabled:opacity-50"
+                    >
+                      {ocrScanning ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Processing {ocrFiles.length} Pages Concurrently...
+                        </>
+                      ) : (
+                        <>
+                          <Scan className="w-3.5 h-3.5" />
+                          Run Concurrent OCR Scan ({ocrFiles.length} Pages)
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    Supports textbook PDFs, lecture slides, scanned pages, and <strong>handwritten notebook / whiteboard photos</strong> (.png, .jpg, .pdf).
-                  </p>
-                </div>
+                )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Or Paste Raw Curriculum Text
-                  </label>
-                  <textarea
-                    value={sourceRawText}
-                    onChange={(e) => setSourceRawText(e.target.value)}
-                    placeholder="Paste exact syllabus, lecture notes, or textbook content..."
-                    rows={5}
-                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none leading-relaxed"
-                  />
-                </div>
+                {/* MODE 2: Direct PDF File / Text Paste */}
+                {ingestMode === 'direct_pdf' && (
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Upload Standard PDF File
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <label className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-semibold cursor-pointer shadow-neon-sm transition-all shrink-0">
+                          Choose PDF
+                          <input
+                            type="file"
+                            accept=".pdf,.txt"
+                            onChange={(e) => setSourceFile(e.target.files[0])}
+                            className="hidden"
+                          />
+                        </label>
+                        <span className="text-xs font-mono text-slate-300 truncate">
+                          {sourceFile ? sourceFile.name : 'No file chosen'}
+                        </span>
+                      </div>
+                    </div>
 
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Or Paste Raw Syllabus / Textbook Text
+                      </label>
+                      <textarea
+                        value={sourceRawText}
+                        onChange={(e) => setSourceRawText(e.target.value)}
+                        placeholder="Paste exact syllabus or textbook content..."
+                        rows={4}
+                        className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none leading-relaxed"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Trigger Semantic Chunking & Embedding Preview */}
                 <button
                   type="button"
                   onClick={handleParseAndChunkSource}
-                  disabled={parsingChunks || (!sourceFile && !sourceRawText.trim())}
+                  disabled={parsingChunks || (!sourceFile && !sourceRawText.trim()) || (ocrBatchResult && ocrBatchResult.needs_review_count > 0)}
                   className="btn-royal-outline text-xs flex items-center gap-2 py-2.5 px-4 w-full justify-center disabled:opacity-50"
                 >
                   {parsingChunks ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
-                      Performing OCR, Chunking & Computing Embeddings...
+                      Parsing, Chunking & Computing Embeddings...
                     </>
                   ) : (
                     <>
                       <Upload className="w-4 h-4 text-neon-orange" />
-                      Parse, OCR & Chunk Source
+                      {ocrBatchResult && ocrBatchResult.needs_review_count > 0
+                        ? `Chunking Blocked (${ocrBatchResult.needs_review_count} page(s) need review)`
+                        : 'Preview Semantic Chunks & Boundaries'}
                     </>
                   )}
                 </button>
@@ -1120,7 +1630,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     <div className="py-16 text-center text-xs text-slate-500 max-w-xs mx-auto space-y-2">
                       <FileCode className="w-8 h-8 text-slate-700 mx-auto" />
                       <p>
-                        Upload or paste source content to preview semantic chunk boundaries and layout extraction.
+                        Upload scanned pages, PDF, or paste source content to preview semantic chunk boundaries and layout extraction.
                       </p>
                     </div>
                   ) : (
@@ -1154,6 +1664,172 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
               </div>
 
             </div>
+
+            {/* ================================================================= */}
+            {/* REVIEW-BY-EXCEPTION SCREEN & SUMMARY BANNER */}
+            {/* ================================================================= */}
+            {ocrBatchResult && (
+              <div className="space-y-4 pt-4 border-t border-slate-800 animate-in fade-in">
+                
+                {/* 1. Summary Banner */}
+                <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
+                  ocrBatchResult.needs_review_count > 0
+                    ? 'bg-amber-950/30 border-neon-amber/50 shadow-neon-sm'
+                    : 'bg-emerald-950/30 border-emerald-500/40 shadow-neon-sm'
+                }`}>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={ocrBatchResult.needs_review_count > 0 ? "warning" : "approved"}>
+                        {ocrBatchResult.needs_review_count > 0 ? "Exception Review Required" : "All Pages Verified"}
+                      </Badge>
+                      <span className="text-xs font-mono text-slate-400">
+                        Gate: ≥{ocrThreshold}% Confidence
+                      </span>
+                    </div>
+                    <h4 className="text-base font-bold text-white">
+                      {ocrBatchResult.auto_accepted_count} of {ocrBatchResult.total_pages} pages auto-accepted. {ocrBatchResult.needs_review_count} page(s) need your review.
+                    </h4>
+                    <p className="text-xs text-slate-300">
+                      {ocrBatchResult.needs_review_count > 0 
+                        ? `Pages with confidence at or above ${ocrThreshold}% were auto-accepted without teacher intervention. Only low-confidence exceptions require review.`
+                        : "All scanned pages meet or exceed the verification threshold. You may proceed directly to semantic chunking."}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {ocrBatchResult.needs_review_count > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleAcceptAllFlaggedPages}
+                        className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white font-bold text-xs flex items-center gap-1.5 shadow-neon-sm transition"
+                      >
+                        <CheckCheck className="w-4 h-4" /> Accept All ({ocrBatchResult.needs_review_count})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAutoAcceptedPages(!showAutoAcceptedPages)}
+                      className="px-3.5 py-2 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-neon-orange" />
+                      {showAutoAcceptedPages ? "Hide Auto-Accepted Pages" : `View Auto-Accepted Pages (${ocrBatchResult.auto_accepted_count})`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Review-by-Exception Queue (Only needs_review pages) */}
+                {ocrBatchResult.needs_review_count > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase text-neon-amber flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-neon-amber" /> Review Flagged Exception Pages ({ocrBatchResult.needs_review_count}):
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        Edit text below & click Approve Page to unblock chunking
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {ocrPages.filter(p => p.review_status === 'needs_review').map(page => (
+                        <div
+                          key={page.page_number}
+                          className="p-4 rounded-2xl bg-dark-950 border border-neon-amber/40 space-y-3 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-neon-amber/20 text-neon-amber border border-neon-amber/40 text-xs font-mono font-bold">
+                                Page {page.page_number}
+                              </span>
+                              <span className="px-2 py-0.5 rounded bg-dark-900 border border-slate-700 text-[11px] font-mono text-rose-400 font-bold">
+                                {Math.round((page.confidence_score || 0) * 100)}% Confidence (&lt;{ocrThreshold}%)
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                {page.uncertain_count > 0 ? `${page.uncertain_count} uncertain term(s) flagged` : 'Low visual clarity'}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleReviewPage(page.page_number, 'reviewed')}
+                              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Approve Page
+                            </button>
+                          </div>
+
+                          {/* Uncertain Spans highlight */}
+                          {page.uncertain_spans && page.uncertain_spans.length > 0 && (
+                            <div className="p-2.5 rounded-xl bg-dark-900 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-neon-amber font-mono text-[10px] uppercase">Uncertain Terms:</span>
+                              {page.uncertain_spans.map((u, uIdx) => (
+                                <span key={uIdx} className="px-2 py-0.5 rounded bg-neon-amber/10 border border-neon-amber/30 text-neon-amber font-mono text-[10px]">
+                                  {u.guess || u.span}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Text Edit Box */}
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                              Reviewed & Corrected Page Text (Grounded RAG Input):
+                            </label>
+                            <textarea
+                              value={ocrPageEditTexts[page.page_number] || ''}
+                              onChange={(e) => setOcrPageEditTexts({ ...ocrPageEditTexts, [page.page_number]: e.target.value })}
+                              rows={4}
+                              className="w-full rounded-xl bg-dark-900 border border-slate-700 p-2.5 text-xs font-mono text-slate-200 resize-y focus:border-neon-orange focus:outline-none leading-relaxed"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Optional Expansion: Auto-Accepted Pages */}
+                {showAutoAcceptedPages && (
+                  <div className="space-y-3 pt-2 border-t border-slate-800 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold uppercase text-emerald-400 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Auto-Accepted High-Confidence Pages ({ocrBatchResult.auto_accepted_count}):
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-500">
+                        ≥{ocrThreshold}% confidence (automatically verified)
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                      {ocrPages.filter(p => p.review_status === 'auto_accepted' || p.review_status === 'reviewed').map(page => (
+                        <div
+                          key={page.page_number}
+                          className="p-3.5 rounded-xl bg-dark-950/70 border border-slate-800 space-y-2 hover:border-slate-700 transition"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 text-xs font-mono font-bold">
+                                Page {page.page_number}
+                              </span>
+                              <span className="text-xs font-mono text-slate-300">
+                                {Math.round((page.confidence_score || 0.98) * 100)}% Confidence
+                              </span>
+                              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded">
+                                {page.review_status === 'reviewed' ? 'Teacher Reviewed' : 'Auto-Accepted'}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-300 font-mono line-clamp-3 bg-dark-900/60 p-2 rounded-lg border border-slate-800/80">
+                            {page.reviewed_text || page.ocr_raw_text}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            )}
+
           </div>
 
           {/* STEP 2: Objective Contract */}
@@ -1180,15 +1856,30 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     )}
                   </div>
 
-                  <div>
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
+                      data-obj-index={idx}
                       value={obj.text}
                       onChange={(e) => updateObjective(idx, 'text', e.target.value)}
                       placeholder="e.g. Explain how ATP synthase uses proton gradients to generate ATP..."
                       required
-                      className="w-full rounded-xl glass-input p-2.5 text-xs"
+                      className="flex-1 rounded-xl glass-input p-2.5 text-xs"
                     />
+                    <button
+                      type="button"
+                      onClick={() => handleValidateObjective(idx)}
+                      disabled={validatingObjectiveIdx === idx || !obj.text.trim()}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-medium flex items-center gap-1.5 transition shrink-0 disabled:opacity-40"
+                      title="Run pedagogical clarity and measurability audit"
+                    >
+                      {validatingObjectiveIdx === idx ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-neon-orange" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 text-neon-orange" />
+                      )}
+                      <span>Audit</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1675,12 +2366,69 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {unitDetails.glossary?.map((item) => (
-                        <div key={item.id} className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-all">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-xs text-neon-orange font-mono">{item.term}</span>
-                            <span className="text-[10px] font-mono text-slate-500">ID #{item.id}</span>
-                          </div>
-                          <p className="text-xs text-slate-300 leading-relaxed font-sans">{item.canonical_wording}</p>
+                        <div key={item.id} className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-2 hover:border-slate-700 transition-all">
+                          {editingGlossaryId === item.id ? (
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-1 font-mono">Term Name</label>
+                                <input
+                                  type="text"
+                                  value={glossaryEditData.term}
+                                  onChange={(e) => setGlossaryEditData({ ...glossaryEditData, term: e.target.value })}
+                                  className="w-full rounded-lg glass-input p-2 text-xs font-mono text-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-slate-400 mb-1 font-mono">Canonical Definition</label>
+                                <textarea
+                                  value={glossaryEditData.canonical_wording}
+                                  onChange={(e) => setGlossaryEditData({ ...glossaryEditData, canonical_wording: e.target.value })}
+                                  rows={3}
+                                  className="w-full rounded-lg glass-input p-2 text-xs text-slate-200 resize-none"
+                                />
+                              </div>
+                              <div className="flex items-center justify-end gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingGlossaryId(null)}
+                                  disabled={savingGlossary}
+                                  className="px-3 py-1 rounded-lg text-xs bg-dark-800 text-slate-400 hover:text-white"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveGlossaryTerm(item.id)}
+                                  disabled={savingGlossary}
+                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-neon-orange hover:bg-neon-orange/90 text-dark-950 flex items-center gap-1 shadow-neon-sm"
+                                >
+                                  {savingGlossary ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                  Save Term
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-white text-xs text-neon-orange font-mono">{item.term}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-mono text-slate-500">ID #{item.id}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingGlossaryId(item.id);
+                                      setGlossaryEditData({ term: item.term, canonical_wording: item.canonical_wording });
+                                    }}
+                                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                                    title="Edit Glossary Term"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                              <p className="text-xs text-slate-300 leading-relaxed font-sans">{item.canonical_wording}</p>
+                            </>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1743,6 +2491,15 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 >
                                   <Clock className="w-3.5 h-3.5 text-neon-orange" /> Quiz History
                                 </button>
+                              )}
+                              {ver.low_confidence || content.low_confidence ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950/70 text-amber-300 border border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.25)]">
+                                  ⚠ Low Source Confidence
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-500/40">
+                                  Grounded ✓
+                                </span>
                               )}
                               <Badge variant={ver.status === 'approved' ? 'approved' : 'warning'}>
                                 {ver.status === 'approved' ? 'APPROVED' : 'DRAFT'}
@@ -2986,6 +3743,69 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
           </div>
         </div>
       )}
+
+      {/* Validation Suggestion Modal */}
+      <ValidationSuggestionModal
+        isOpen={validationModalOpen}
+        onClose={() => setValidationModalOpen(false)}
+        title={validationConfig.title}
+        targetType={validationConfig.targetType}
+        issues={validationConfig.issues}
+        onApplySuggestion={(suggested, issue) => {
+          if (validationConfig.onApply) validationConfig.onApply(suggested, issue);
+          else setValidationModalOpen(false);
+        }}
+        onKeepOriginal={(original, issue) => {
+          if (validationConfig.onKeep) validationConfig.onKeep(original, issue);
+          else setValidationModalOpen(false);
+        }}
+        onEditFurther={(original, issue) => {
+          if (validationConfig.onEditFurther) validationConfig.onEditFurther(original, issue);
+          else setValidationModalOpen(false);
+        }}
+      />
+
+      {/* Source Coverage Warning Modal */}
+      <CoverageWarningModal
+        isOpen={coverageModalOpen}
+        onClose={() => setCoverageModalOpen(false)}
+        objectiveText={coverageWarningData.objectiveText}
+        bestMatchScore={coverageWarningData.bestMatchScore}
+        threshold={coverageWarningData.threshold}
+        coverageNote={coverageWarningData.coverageNote}
+        onEditObjective={() => {
+          setCoverageModalOpen(false);
+          setTimeout(() => {
+            const inputElem = document.querySelector(`input[data-obj-index="${coverageWarningData.objectiveIndex}"]`);
+            if (inputElem) {
+              inputElem.focus();
+              inputElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, 100);
+        }}
+        onGenerateAnyway={() => {
+          const objText = coverageWarningData.objectiveText;
+          const updatedLowConf = [...lowConfidenceObjTexts, objText];
+          setLowConfidenceObjTexts(updatedLowConf);
+          setCoverageModalOpen(false);
+          showToast("Proceeding with generation under Low Source Confidence flag.", "info");
+          executeCreateUnit(objectives, updatedLowConf);
+        }}
+        onCancelObjective={() => {
+          const discardIdx = coverageWarningData.objectiveIndex;
+          setCoverageModalOpen(false);
+          if (objectives.length > 2) {
+            const updated = objectives.filter((_, idx) => idx !== discardIdx);
+            setObjectives(updated);
+            showToast("Unsupported objective discarded.", "info");
+          } else {
+            const updated = [...objectives];
+            updated[discardIdx] = { ...updated[discardIdx], text: '' };
+            setObjectives(updated);
+            showToast("Objective cleared. Please enter a covered objective.", "info");
+          }
+        }}
+      />
 
     </div>
   );
