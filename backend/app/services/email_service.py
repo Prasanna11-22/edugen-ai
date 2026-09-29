@@ -7,7 +7,7 @@ from typing import Optional
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "lessonfoundrykce@gmail.com")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", "aqld qbxd cdtq eubl")) # Default or env app password
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", "hdrg fkay vqyu ofkc"))
 
 def send_otp_email(to_email: str, otp_code: str, user_name: Optional[str] = None) -> bool:
     """
@@ -182,12 +182,13 @@ def send_otp_email(to_email: str, otp_code: str, user_name: Optional[str] = None
         msg.attach(part1)
         msg.attach(part2)
 
+        smtp_pwd = os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", "aqld qbxd cdtq eubl")).replace(" ", "").strip()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=12) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
-            if SMTP_PASSWORD:
-                server.login(SMTP_USER, SMTP_PASSWORD)
+            if smtp_pwd:
+                server.login(SMTP_USER, smtp_pwd)
             server.sendmail(SMTP_USER, [to_email], msg.as_string())
 
         print(f"[SMTP Success] Email sent successfully to {to_email}")
