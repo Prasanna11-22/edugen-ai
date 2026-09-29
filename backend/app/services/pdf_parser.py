@@ -2,9 +2,53 @@ import io
 import re
 from typing import Optional
 from pypdf import PdfReader
+from .gemini_service import call_gemini_vision
+
+def extract_text_from_file_or_image(file_bytes: bytes, filename: str) -> str:
+    """
+    Unified extraction pipeline supporting PDF, text, and handwritten/scanned images
+    (.png, .jpg, .jpeg, .webp, .bmp, .tiff) with automatic multimodal vision OCR fallback.
+    """
+    if not file_bytes:
+        return ""
+        
+    fn_lower = filename.lower() if filename else ""
+
+    # 1. Direct Image Formats (Handwritten notebook photos, whiteboard captures, scanned pages)
+    image_exts = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
+        ".tiff": "image/tiff"
+    }
+
+    matched_ext = next((ext for ext in image_exts if fn_lower.endswith(ext)), None)
+    if matched_ext:
+        mime = image_exts[matched_ext]
+        ocr_text = call_gemini_vision(file_bytes, mime_type=mime)
+        if ocr_text:
+            return clean_extracted_text(ocr_text)
+        return ""
+
+    # 2. PDF Documents (Embedded text or Scanned/Handwritten PDF)
+    if fn_lower.endswith(".pdf"):
+        return extract_text_from_pdf(file_bytes)
+
+    # 3. Plain Text Fallback
+    try:
+        decoded = file_bytes.decode("utf-8")
+        return clean_extracted_text(decoded)
+    except Exception:
+        try:
+            decoded = file_bytes.decode("latin-1", errors="ignore")
+            return clean_extracted_text(decoded)
+        except Exception:
+            return ""
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract clean, substantive text from PDF bytes with layout-aware normalization and metadata stripping."""
+    """Extract clean text from PDF bytes; automatically falls back to multimodal Vision OCR if scanned/handwritten."""
     if not file_bytes:
         return ""
     try:
@@ -13,27 +57,35 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
         pages_text = []
         for i, page in enumerate(reader.pages):
             try:
-                text = page.extract_text()
-            except Exception as pe:
+                text = page.extract_text() or ""
+            except Exception:
                 text = ""
             if text:
-                # Check if page is solely acknowledgment / title / license boilerplate
                 lower_text = text.lower()
                 if i < 3 and ("acknowledgments" in lower_text or "creative commons" in lower_text or "zero textbook cost" in lower_text):
                     continue
                 pages_text.append(text)
+                
         full_text = "\n\n".join(pages_text)
-        return clean_extracted_text(full_text)
+        cleaned = clean_extracted_text(full_text)
+        
+        # If PDF is scanned or handwritten, embedded text is empty or very short (< 40 chars)
+        if len(cleaned.strip()) < 40:
+            print("[PDF Parser] Scanned or handwritten PDF detected. Running multimodal Vision OCR...")
+            vision_text = call_gemini_vision(file_bytes, mime_type="application/pdf")
+            if vision_text and len(vision_text.strip()) > 10:
+                return clean_extracted_text(vision_text)
+                
+        return cleaned
     except Exception as e:
-        print(f"[PDF Parser Error] {e}")
-        # Safe fallback: extract only printable text characters, strictly avoiding binary / NUL bytes
+        print(f"[PDF Parser Error] {e}. Trying multimodal Vision OCR...")
         try:
-            # Match sequences of printable characters
-            extracted = re.findall(rb'[\x20-\x7E\r\n\t]{4,}', file_bytes)
-            decoded = b" ".join(extracted).decode('utf-8', errors='ignore')
-            return clean_extracted_text(decoded)
+            vision_text = call_gemini_vision(file_bytes, mime_type="application/pdf")
+            if vision_text:
+                return clean_extracted_text(vision_text)
         except Exception:
-            return ""
+            pass
+        return ""
 
 def clean_extracted_text(text: str) -> str:
     """Normalize whitespace, repair broken PDF word splits, remove NUL characters, page headers/footers, grants, and boilerplate."""

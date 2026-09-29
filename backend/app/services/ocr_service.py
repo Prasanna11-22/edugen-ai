@@ -5,20 +5,20 @@ import base64
 from typing import Dict, Any, List, Optional
 from .gemini_service import call_gemini_vision
 
-OCR_SYSTEM_PROMPT = """You are an expert Optical Character Recognition (OCR) and document transcription system.
-Your task is to transcribe all text from the provided document image accurately, exactly, and completely as it appears.
+OCR_SYSTEM_PROMPT = """You are an advanced Optical Character Recognition (OCR) and handwriting transcription AI specialized in deciphering handwritten notes, student notebook pages, whiteboard captures, classroom lecture notes, mathematical derivations, scientific diagrams, and scanned documents.
 
-CRITICAL INSTRUCTIONS:
-1. Transcribe the text verbatim without summarizing, paraphrasing, omitting words, or inserting commentary.
-2. Preserve original paragraph structures, headings, list items, tables, and mathematical notations wherever possible.
+TRANSCRIPTION INSTRUCTIONS:
+1. DECIPHER HANDWRITING WITH MAXIMUM ACCURACY:
+   - Carefully transcribe handwritten words, cursive, imperfect handwriting, abbreviations, bullet points, headers, and margin annotations.
+   - For mathematical or scientific formulas, format them clearly (e.g. "E = mc^2", "F = m*a", "dx/dt", chemical equations like "6CO2 + 6H2O -> C6H12O6 + 6O2").
+   - Maintain structural order, paragraphs, and list numbering.
+2. VERBATIM FIDELITY:
+   - Transcribe all text completely and exactly as written without summarizing, paraphrasing, omitting words, or inserting commentary.
 3. UNCERTAIN WORDS & REVIEW-BY-EXCEPTION TRIGGER:
-   If any word, number, acronym, equation, or phrase is illegible, blurry, clipped, smudged, ambiguous, handwritten, or low-confidence, you MUST wrap it in [UNCERTAIN: best guess] tags.
-   Examples:
-   - "The process of [UNCERTAIN: phosphorylation] produces ATP."
-   - "The value of k was [UNCERTAIN: 4.82] under standard pressure."
-   - "See Section [UNCERTAIN: 3.2.1] for details."
-4. If a word or character is completely unreadable and cannot even be guessed, use [UNCERTAIN: ???].
-5. Do NOT include introductory phrases, conversational remarks, or markdown code block wrappers (like ```text). Output ONLY the raw transcribed text.
+   - If any handwritten word or number is genuinely illegible, blurry, smudged, or ambiguous, make your best educated contextual guess and wrap it in [UNCERTAIN: best guess] tags (e.g. "[UNCERTAIN: mitochondria]").
+   - If completely unreadable, use [UNCERTAIN: ???].
+4. OUTPUT FORMAT:
+   - Output ONLY the clean transcribed text without markdown code block fences (```), conversational greetings, or explanations.
 """
 
 def parse_ocr_transcription(raw_text: str) -> Dict[str, Any]:

@@ -21,7 +21,7 @@ from ..schemas import (
     StudentRequestCreate, StudentRequestStatusUpdate, StudentRequestResponseCreate
 )
 from ..auth import teacher_required, get_password_hash
-from ..services.pdf_parser import extract_text_from_pdf, clean_extracted_text
+from ..services.pdf_parser import extract_text_from_file_or_image, extract_text_from_pdf, clean_extracted_text
 from ..services.chunker import semantic_chunk_text
 from ..services.embeddings import generate_embeddings_for_chunks, retrieve_top_k_chunks
 from ..services.rag_engine import (
@@ -256,17 +256,14 @@ async def preview_source_chunks(
     extracted_text = ""
     if file:
         file_bytes = await file.read()
-        if file.filename.lower().endswith(".pdf"):
-            extracted_text = extract_text_from_pdf(file_bytes)
-        else:
-            extracted_text = file_bytes.decode("utf-8", errors="ignore")
+        extracted_text = extract_text_from_file_or_image(file_bytes, file.filename)
     elif raw_text:
         extracted_text = clean_extracted_text(raw_text)
     else:
-        raise HTTPException(status_code=400, detail="Please upload a PDF file or paste source text.")
+        raise HTTPException(status_code=400, detail="Please upload a document file (PDF, Handwritten Note, Image) or paste source text.")
         
-    if len(extracted_text.strip()) < 20:
-        raise HTTPException(status_code=400, detail="Source text is too short to chunk.")
+    if len(extracted_text.strip()) < 15:
+        raise HTTPException(status_code=400, detail="Source text is too short or could not be extracted. Please ensure the document is clear.")
         
     chunks_data = semantic_chunk_text(extracted_text, target_tokens=400, overlap_pct=0.15)
     
@@ -310,18 +307,15 @@ async def create_unit_with_source(
         with open(file_path, "wb") as f:
             f.write(file_bytes)
             
-        if file.filename.lower().endswith(".pdf"):
-            extracted_text = extract_text_from_pdf(file_bytes)
-        else:
-            extracted_text = clean_extracted_text(file_bytes.decode("utf-8", errors="ignore"))
+        extracted_text = extract_text_from_file_or_image(file_bytes, file.filename)
     elif raw_text:
         extracted_text = clean_extracted_text(raw_text)
     else:
-        raise HTTPException(status_code=400, detail="Please upload a PDF source file or provide source text.")
+        raise HTTPException(status_code=400, detail="Please upload a source document (PDF, Handwritten Note, Image) or provide source text.")
         
     extracted_text = clean_extracted_text(extracted_text).replace('\x00', '')
-    if len(extracted_text.strip()) < 30:
-        raise HTTPException(status_code=400, detail="Source content is too short or unreadable.")
+    if len(extracted_text.strip()) < 15:
+        raise HTTPException(status_code=400, detail="Source content is too short or unreadable. Please check the document.")
         
     # 1. Create Source & SourceVersion
     source = Source(teacher_id=current_teacher.id, title=source_title.strip().replace('\x00', ''))
