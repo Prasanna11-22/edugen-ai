@@ -20,7 +20,7 @@ CANDIDATE_MODELS = [
     "gemini-flash-latest"
 ]
 
-def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, timeout: int = 25) -> Optional[Dict[str, Any]]:
+def call_gemini_json(prompt: str, system_instruction: Optional[str] = None, timeout: int = 10) -> Optional[Dict[str, Any]]:
     """Calls Gemini API with structured JSON output enforcement and automatic model fallback."""
     api_key = os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY
     if not api_key:
@@ -85,7 +85,7 @@ def call_gemini_vision(
     image_bytes: bytes,
     mime_type: str = "image/png",
     prompt: Optional[str] = None,
-    timeout: int = 25
+    timeout: int = 15
 ) -> Optional[str]:
     """
     Calls multimodal vision Gemini model to perform high-fidelity OCR transcription.

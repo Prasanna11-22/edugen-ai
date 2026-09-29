@@ -5,6 +5,7 @@ import string
 import secrets
 from typing import List, Optional
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from ..database import get_db
@@ -692,13 +693,21 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
         q_count = data.quiz_count or obj_constraints.get("quiz_count", 3)
         diff_mode = data.difficulty or obj_constraints.get("difficulty", "Medium")
 
-        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS
-        exp_data = generate_concept_explanation(obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"))
-        ex_data = generate_worked_example(obj.text, matched_chunks, glossary, "Apply")
-        quiz_data = generate_formative_quiz(obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode)
+        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS in parallel
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            f_exp = executor.submit(generate_concept_explanation, obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"))
+            f_ex = executor.submit(generate_worked_example, obj.text, matched_chunks, glossary, "Apply")
+            f_quiz = executor.submit(generate_formative_quiz, obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode)
+            f_easy = executor.submit(generate_differentiated_practice, obj.text, matched_chunks, glossary, "easy")
+            f_adv = executor.submit(generate_differentiated_practice, obj.text, matched_chunks, glossary, "advanced")
+            
+            exp_data = f_exp.result()
+            ex_data = f_ex.result()
+            quiz_data = f_quiz.result()
+            easy_data = f_easy.result()
+            adv_data = f_adv.result()
+
         key_data = generate_answer_key(obj.text, quiz_data, matched_chunks)
-        easy_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "easy")
-        adv_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "advanced")
         rev_data = generate_revision_sheet(obj.text, matched_chunks, exp_data, ex_data, quiz_data, glossary)
 
         asset_blueprints = [
