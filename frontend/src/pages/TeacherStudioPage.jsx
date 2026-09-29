@@ -151,30 +151,32 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
   const safeApiResponse = async (res, defaultErrMsg = "Request failed") => {
     const text = await res.text();
+    let data = null;
     try {
-      const data = JSON.parse(text);
+      data = JSON.parse(text);
+    } catch (parseErr) {
       if (!res.ok) {
-        let msg = defaultErrMsg;
-        if (data && typeof data === 'object') {
-          if (typeof data.detail === 'string') {
-            msg = data.detail;
-          } else if (Array.isArray(data.detail)) {
-            msg = data.detail.map(d => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
-          } else if (data.message) {
-            msg = data.message;
-          } else {
-            msg = JSON.stringify(data);
-          }
-        }
-        throw new Error(msg);
-      }
-      return data;
-    } catch (e) {
-      if (!res.ok) {
-        throw new Error(e.message || (text && text.length < 200 ? text : `Server Error (${res.status})`));
+        throw new Error(text && text.length < 150 ? text : `Server error (${res.status})`);
       }
       return text;
     }
+
+    if (!res.ok) {
+      let msg = defaultErrMsg;
+      if (data && typeof data === 'object') {
+        if (typeof data.detail === 'string') {
+          msg = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          msg = data.detail.map(d => d.msg || (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
+        } else if (data.message) {
+          msg = data.message;
+        } else {
+          msg = JSON.stringify(data);
+        }
+      }
+      throw new Error(msg);
+    }
+    return data;
   };
 
   // Instant Chunk Parser Handler

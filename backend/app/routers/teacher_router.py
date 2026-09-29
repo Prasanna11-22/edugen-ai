@@ -11,7 +11,7 @@ from ..database import get_db
 from ..models import (
     User, Classroom, Enrollment, Source, SourceVersion, Chunk, Unit,
     Objective, Glossary, Asset, AssetVersion, QualityFlag, Assignment, Submission,
-    QuizItem, QuizItemVersion, StudentRequest, RequestResponse
+    QuizItem, QuizItemVersion, StudentRequest, RequestResponse, SourcePage
 )
 from ..schemas import (
     ClassroomCreate, StudentCreate, BulkStudentCreate, UnitCreateRequest,
@@ -523,11 +523,19 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
     unit_title = unit.title
     source_id = unit.source_id
 
-    # 1. Cleanly delete all associated assignments and submissions for all asset versions in this unit
+    # 1. Cleanly delete all associated assets, quiz items, versions, assignments, and submissions
     assets = db.query(Asset).filter(Asset.unit_id == unit.id).all()
     asset_ids = [a.id for a in assets]
     
     if asset_ids:
+        # A. Clean up QuizItems and QuizItemVersions attached to these assets
+        quiz_items = db.query(QuizItem).filter(QuizItem.asset_id.in_(asset_ids)).all()
+        quiz_item_ids = [qi.id for qi in quiz_items]
+        if quiz_item_ids:
+            db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id.in_(quiz_item_ids)).delete(synchronize_session=False)
+            db.query(QuizItem).filter(QuizItem.id.in_(quiz_item_ids)).delete(synchronize_session=False)
+
+        # B. Clean up AssetVersions, Assignments, Submissions, and QualityFlags
         versions = db.query(AssetVersion).filter(AssetVersion.asset_id.in_(asset_ids)).all()
         version_ids = [v.id for v in versions]
         
@@ -545,16 +553,31 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
         db.query(Asset).filter(Asset.id.in_(asset_ids)).delete(synchronize_session=False)
         db.flush()
 
-    # 2. Delete objectives and glossary
-    db.query(Objective).filter(Objective.unit_id == unit.id).delete(synchronize_session=False)
+    # 2. Clean up StudentRequests and RequestResponses attached to this unit or its objectives
+    objectives = db.query(Objective).filter(Objective.unit_id == unit.id).all()
+    objective_ids = [o.id for o in objectives]
+    
+    req_query = db.query(StudentRequest).filter(
+        (StudentRequest.unit_id == unit.id) |
+        ((StudentRequest.objective_id.in_(objective_ids)) if objective_ids else False)
+    )
+    student_reqs = req_query.all()
+    req_ids = [r.id for r in student_reqs]
+    if req_ids:
+        db.query(RequestResponse).filter(RequestResponse.request_id.in_(req_ids)).delete(synchronize_session=False)
+        db.query(StudentRequest).filter(StudentRequest.id.in_(req_ids)).delete(synchronize_session=False)
+
+    # 3. Delete objectives and glossary
+    if objective_ids:
+        db.query(Objective).filter(Objective.id.in_(objective_ids)).delete(synchronize_session=False)
     db.query(Glossary).filter(Glossary.unit_id == unit.id).delete(synchronize_session=False)
     db.flush()
     
-    # 3. Delete unit
+    # 4. Delete unit
     db.delete(unit)
     db.commit()
     
-    # 4. Source cleanup: if source is only attached to this unit, delete chunks and source
+    # 5. Source cleanup: if source is only attached to this unit, delete chunks, source pages, and source
     if source_id:
         other_units = db.query(Unit).filter(Unit.source_id == source_id).count()
         if other_units == 0:
@@ -563,8 +586,13 @@ def delete_unit(unit_id: int, db: Session = Depends(get_db), current_teacher: Us
                 s_versions = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).all()
                 sv_ids = [sv.id for sv in s_versions]
                 if sv_ids:
+                    db.query(SourcePage).filter(
+                        (SourcePage.source_id == source.id) | (SourcePage.source_version_id.in_(sv_ids))
+                    ).delete(synchronize_session=False)
                     db.query(Chunk).filter(Chunk.source_version_id.in_(sv_ids)).delete(synchronize_session=False)
                     db.query(SourceVersion).filter(SourceVersion.id.in_(sv_ids)).delete(synchronize_session=False)
+                else:
+                    db.query(SourcePage).filter(SourcePage.source_id == source.id).delete(synchronize_session=False)
                 db.delete(source)
                 db.commit()
                 

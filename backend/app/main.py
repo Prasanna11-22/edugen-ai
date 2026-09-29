@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base, SessionLocal
 from .models import *
 from .seed import seed_database_if_empty
-from .routers import auth_router, admin_router, teacher_router, student_router, eval_router
+from .routers import auth_router, admin_router, teacher_router, student_router, eval_router, ocr_router
 
 # Initialize Tables
 Base.metadata.create_all(bind=engine)
@@ -36,6 +36,8 @@ app.include_router(admin_router.router)
 app.include_router(teacher_router.router)
 app.include_router(student_router.router)
 app.include_router(eval_router.router)
+app.include_router(ocr_router.router)
+app.include_router(ocr_router.router, prefix="/api/teacher")
 
 @app.get("/")
 def root():

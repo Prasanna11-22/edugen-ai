@@ -186,5 +186,40 @@ class StudentRequestStatusUpdate(BaseModel):
 class StudentRequestResponseCreate(BaseModel):
     message: str
 
+# -------------------------------------------------------------
+# OCR & SOURCE PAGES SCHEMAS
+# -------------------------------------------------------------
+class SourcePageReviewRequest(BaseModel):
+    cleaned_text: Optional[str] = None
+    review_status: str = "approved" # approved, rejected, needs_review
+    teacher_notes: Optional[str] = None
+
+class OCRPageResponse(BaseModel):
+    id: Optional[int] = None
+    page_number: int
+    source_id: Optional[int] = None
+    source_version_id: Optional[int] = None
+    raw_text: str
+    cleaned_text: str
+    review_status: str # needs_review, auto_approved, approved, rejected
+    has_uncertain_spans: bool
+    uncertain_spans: List[Dict[str, Any]] = []
+    uncertain_count: int = 0
+    ocr_provider: str = "gemini_vision"
+    image_path: Optional[str] = None
+    confidence_score: Optional[float] = None
+    reviewed_by: Optional[int] = None
+    reviewed_at: Optional[datetime] = None
+    teacher_notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+class BatchOCRResponse(BaseModel):
+    total_pages: int
+    processed_pages: int
+    needs_review_count: int
+    auto_approved_count: int
+    pages: List[OCRPageResponse]
+    message: str
+
 
 

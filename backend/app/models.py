@@ -62,6 +62,7 @@ class Source(Base):
     teacher = relationship("User", back_populates="sources")
     versions = relationship("SourceVersion", back_populates="source", cascade="all, delete-orphan")
     units = relationship("Unit", back_populates="source")
+    pages = relationship("SourcePage", back_populates="source", cascade="all, delete-orphan")
 
 
 class SourceVersion(Base):
@@ -76,6 +77,7 @@ class SourceVersion(Base):
     
     source = relationship("Source", back_populates="versions")
     chunks = relationship("Chunk", back_populates="source_version", cascade="all, delete-orphan")
+    pages = relationship("SourcePage", back_populates="source_version", cascade="all, delete-orphan")
 
 
 class Chunk(Base):
@@ -301,5 +303,33 @@ class RequestResponse(Base):
     
     request = relationship("StudentRequest", back_populates="responses")
     user = relationship("User")
+
+
+class SourcePage(Base):
+    __tablename__ = "source_pages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("sources.id"), nullable=True)
+    source_version_id = Column(Integer, ForeignKey("source_versions.id"), nullable=True)
+    teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    page_number = Column(Integer, nullable=False, default=1)
+    image_path = Column(String(300), nullable=True)
+    raw_text = Column(Text, nullable=False, default="")
+    cleaned_text = Column(Text, nullable=False, default="")
+    ocr_provider = Column(String(50), default="gemini_vision") # gemini_vision or google_cloud_vision
+    review_status = Column(String(30), default="auto_approved") # needs_review, auto_approved, approved, rejected
+    uncertain_spans_json = Column(Text, default="[]") # JSON list of uncertain spans
+    confidence_score = Column(Float, nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    teacher_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    
+    source = relationship("Source", back_populates="pages")
+    source_version = relationship("SourceVersion", back_populates="pages")
+    teacher = relationship("User", foreign_keys=[teacher_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+
 
 
