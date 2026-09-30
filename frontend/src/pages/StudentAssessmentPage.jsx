@@ -412,7 +412,12 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           answers: currentAnswers
         })
       });
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        data = { detail: res.statusText || 'Unexpected server response during submission' };
+      }
       if (!res.ok) throw new Error(data.detail || 'Submission failed');
       stopCameraStream();
       setResult(data);

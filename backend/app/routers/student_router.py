@@ -952,7 +952,7 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
         in_progress.answers_json = json.dumps(data.answers)
         in_progress.score = mastery_percentage
         in_progress.objective_breakdown_json = json.dumps(objective_breakdown)
-        in_progress.submitted_at = datetime.datetime.utcnow()
+        in_progress.submitted_at = datetime.utcnow()
         submission = in_progress
         db.commit()
         db.refresh(submission)
