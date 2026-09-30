@@ -39,7 +39,10 @@ import {
   MessageSquarePlus,
   MessageSquare,
   FileQuestion,
-  MessageCircle
+  MessageCircle,
+  Paperclip,
+  FileText,
+  Ban
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -52,6 +55,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   const [selectedCategory, setSelectedCategory] = useState('all'); // 'all', 'packs', 'practice', 'assessments'
   const [allData, setAllData] = useState({ assignments: [], materials: [] });
   const [loading, setLoading] = useState(true);
+  const [confirmingAssessment, setConfirmingAssessment] = useState(null);
 
   // Self-Paced AI Test Generator State (Standard Mode)
   const [selfPacedTopics, setSelfPacedTopics] = useState([]);
@@ -246,6 +250,47 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     }
   };
 
+  const handleConfirmStartAssessment = async () => {
+    if (!confirmingAssessment) return;
+    const target = confirmingAssessment;
+    setConfirmingAssessment(null);
+
+    // 1. Immediately decrement attempt count in allData.assignments state so it vanishes if attempts reach 0
+    setAllData(prev => ({
+      ...prev,
+      assignments: prev.assignments.map(item => {
+        if (item.assignment_id === target.assignment_id || item.unit_id === target.unit_id) {
+          const newUsed = (item.attempts_used || 0) + 1;
+          const newRem = Math.max(0, (item.max_attempts || 1) - newUsed);
+          return {
+            ...item,
+            attempts_used: newUsed,
+            attempts_remaining: newRem,
+            can_attempt: newRem > 0
+          };
+        }
+        return item;
+      })
+    }));
+
+    // 2. Notify backend to register attempt start in database
+    try {
+      fetch('/api/student/assignments/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ assignment_id: target.assignment_id })
+      }).catch(err => console.warn("Backend attempt start notification error:", err));
+    } catch (e) {
+      console.warn("Attempt start error:", e);
+    }
+
+    // 3. Launch live assessment
+    onTakeAssessment({ ...target, isNewAttempt: true });
+  };
+
   const handleJoinClassroom = async (e) => {
     e.preventDefault();
     if (!joinCode.trim()) return;
@@ -338,11 +383,11 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
   // Generate dynamic self-paced practice test via Gemini AI
   const handleGenerateSelfPacedTest = async (overrideUnitId = null, overrideDiff = null) => {
-    const unitId = overrideUnitId || selectedTopicUnitId;
+    const unitId = overrideUnitId || selectedTopicUnitId || (displayedSelfPacedTopics[0]?.unit_id);
     const diff = overrideDiff || selectedDifficulty;
 
-    if (!unitId && selfPacedTopics.length === 0) {
-      showToast("No assigned pack topics available yet. Please enroll in a classroom first.", "error");
+    if (!unitId && displayedSelfPacedTopics.length === 0) {
+      showToast("No assigned pack topics available for this classroom. Please enroll or switch classroom.", "error");
       return;
     }
 
@@ -409,12 +454,12 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
   // COMPUTER-ADAPTIVE TESTING (CAT) DYNAMIC DIAGNOSTIC HANDLERS
   // -------------------------------------------------------------
   const handleStartAdaptiveDiagnostic = async (overrideUnitId = null) => {
-    const unitId = overrideUnitId || selectedTopicUnitId || (selfPacedTopics[0]?.unit_id);
+    const unitId = overrideUnitId || selectedTopicUnitId || (displayedSelfPacedTopics[0]?.unit_id);
     if (!unitId) {
-      showToast("No pack topics available. Please join a classroom first.", "error");
+      showToast("No pack topics available for this classroom. Please select a classroom with active study packs.", "error");
       return;
     }
-    const topicObj = selfPacedTopics.find(t => String(t.unit_id) === String(unitId));
+    const topicObj = displayedSelfPacedTopics.find(t => String(t.unit_id) === String(unitId)) || selfPacedTopics.find(t => String(t.unit_id) === String(unitId));
     const title = topicObj?.title || "Curriculum Diagnostic";
 
     setGeneratingDiagnostic(true);
@@ -621,6 +666,25 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     ? allData.materials
     : allData.materials.filter(m => m.classroom_id === selectedClassId);
 
+  const displayedSelfPacedTopics = selectedClassId === 'all'
+    ? selfPacedTopics
+    : selfPacedTopics.filter(t => {
+        if (t.classroom_id === selectedClassId) return true;
+        if (Array.isArray(t.classroom_ids) && t.classroom_ids.includes(selectedClassId)) return true;
+        return false;
+      });
+
+  useEffect(() => {
+    if (displayedSelfPacedTopics.length > 0) {
+      const exists = displayedSelfPacedTopics.some(t => String(t.unit_id) === String(selectedTopicUnitId));
+      if (!exists) {
+        setSelectedTopicUnitId(String(displayedSelfPacedTopics[0].unit_id));
+      }
+    } else {
+      setSelectedTopicUnitId('');
+    }
+  }, [selectedClassId, displayedSelfPacedTopics]);
+
   const displayedRequests = (selectedClassId === 'all'
     ? studentRequests
     : studentRequests.filter(r => r.classroom_id === selectedClassId)
@@ -628,6 +692,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     if (studentRequestFilter === 'all') return true;
     if (studentRequestFilter === 'open') return r.status === 'open' || r.status === 'in_progress';
     if (studentRequestFilter === 'resolved') return r.status === 'resolved' || r.status === 'closed';
+    if (studentRequestFilter === 'rejected') return r.status === 'rejected';
     return true;
   });
 
@@ -657,39 +722,39 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     <div className="space-y-8 pb-20">
       
       {/* Student Welcome Banner */}
-      <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+      <div className="rounded-2xl glass-panel-accent p-6 sm:p-7 border border-neon-orange/30 shadow-neon flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-neon-orange via-neon-amber to-neon-gold" />
-        <div>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="text-xs font-mono uppercase tracking-widest text-neon-amber font-bold flex items-center gap-1">
-              <Compass className="w-3.5 h-3.5 text-neon-orange" /> Domain Learning Portal
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-mono uppercase tracking-widest text-neon-amber font-bold">
+              Domain Learning Portal
             </span>
-            <Badge variant="bloom">Self-Paced & Formative Modes</Badge>
+            <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-950 text-slate-300 border border-slate-800">
+              Self-Paced & Formative
+            </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white">
-            Welcome, <span className="text-neon-glow">{user?.name}</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl leading-relaxed">
-            Access verified full study packs, generate dynamic AI-powered self-paced practice tests, and attempt instructor-assigned formative tests.
-          </p>
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-white">
+              Welcome, <span className="text-neon-glow">{user?.name}</span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
+              Access your study packs, adaptive practice tests, and formative assessments.
+            </p>
+          </div>
 
           {/* Quick Metrics Bar */}
-          <div className="flex items-center gap-3 pt-4 flex-wrap text-xs">
-            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5 font-mono">
-              <BookOpen className="w-3.5 h-3.5 text-neon-orange" />
-              <span><strong>{displayedMaterials.length}</strong> Study Packs</span>
+          <div className="flex items-center gap-2 pt-1 flex-wrap text-xs font-mono">
+            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300">
+              <strong className="text-white">{displayedMaterials.length}</strong> Study Packs
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5 font-mono">
-              <BrainCircuit className="w-3.5 h-3.5 text-sky-400" />
-              <span><strong>{selfPacedTopics.length}</strong> AI Practice Topics</span>
+            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300">
+              <strong className="text-white">{displayedSelfPacedTopics.length}</strong> AI Practice Topics
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5 font-mono">
-              <Clock className="w-3.5 h-3.5 text-neon-amber" />
-              <span><strong>{displayedAssignments.length}</strong> Formative Tests</span>
+            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300">
+              <strong className="text-white">{displayedAssignments.length}</strong> Formative Tests
             </div>
-            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300 flex items-center gap-1.5 font-mono">
-              <MessageSquarePlus className="w-3.5 h-3.5 text-purple-400" />
-              <span><strong>{studentRequests.length}</strong> Notes Requests</span>
+            <div className="px-3 py-1.5 rounded-xl bg-dark-950/80 border border-slate-800 text-slate-300">
+              <strong className="text-white">{studentRequests.length}</strong> Notes Requests
             </div>
           </div>
         </div>
@@ -702,15 +767,15 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               }
               setShowCreateRequestModal(true);
             }}
-            className="px-4 py-3 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-bold border border-purple-400/30 shadow-neon flex items-center gap-2 transition-all"
+            className="px-4 py-2.5 rounded-xl bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-semibold border border-purple-400/30 transition-all"
           >
-            <MessageSquarePlus className="w-4 h-4" /> Request Course Notes
+            Request Course Notes
           </button>
           <button
             onClick={() => setShowJoinModal(true)}
-            className="btn-royal text-xs flex items-center gap-2 py-3 px-5 shadow-neon shrink-0"
+            className="btn-royal text-xs font-semibold py-2.5 px-5 shrink-0"
           >
-            <Plus className="w-4 h-4" /> Join Classroom
+            Join Classroom
           </button>
         </div>
       </div>
@@ -719,40 +784,33 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       {/* STUDENT SKILL PROFILE & ADAPTIVE EVALUATED LEVEL CARD */}
       {/* ========================================================================= */}
       {savedProfileReport ? (
-        <div className="rounded-3xl glass-panel-accent p-5 sm:p-6 border border-sky-500/40 shadow-neon bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden">
-          <div className="flex items-start sm:items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex flex-col items-center justify-center text-white shadow-[0_0_20px_rgba(56,189,248,0.35)] shrink-0">
-              <Trophy className="w-6 h-6 text-white" />
-              <span className="text-[9px] font-mono font-bold uppercase mt-0.5">Rank</span>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1">
-                  <BrainCircuit className="w-3.5 h-3.5" /> Evaluated Student Skill Profile
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-dark-950 text-neon-amber border border-slate-700">
+        <div className="rounded-2xl glass-panel-accent p-5 sm:p-6 border border-sky-500/30 shadow-neon bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400">
+                Evaluated Skill Profile
+              </span>
+              {savedProfileReport.unit_title && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-950 text-neon-amber border border-slate-800">
                   {savedProfileReport.unit_title}
                 </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-black text-white">
-                  {savedProfileReport.level?.badge || "⚡ Intermediate"}
-                </h2>
-                <span className="text-xs font-mono text-slate-400">
-                  ({savedProfileReport.overall_score?.percent}% overall accuracy)
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 max-w-2xl line-clamp-2">
-                {savedProfileReport.level?.description}
-              </p>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-lg sm:text-xl font-black text-white">
+                {(savedProfileReport.level?.badge || "Intermediate").replace(/[^\w\s]/gi, '').trim()}
+              </h2>
+              <span className="text-xs font-mono text-slate-400">
+                ({savedProfileReport.overall_score?.percent}% overall accuracy)
+              </span>
             </div>
           </div>
 
           {/* 3-Tier Metric Progress Bars */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-t lg:border-t-0 lg:border-l border-slate-800 pt-3 lg:pt-0 lg:pl-6 shrink-0">
-            <div className="grid grid-cols-3 gap-3 w-full sm:w-auto">
+            <div className="grid grid-cols-3 gap-2.5 w-full sm:w-auto">
               {/* Easy Bar */}
-              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[90px] text-center">
                 <span className="text-[10px] font-mono text-emerald-400 uppercase font-bold block">Easy</span>
                 <span className="text-sm font-bold text-white font-mono">
                   {savedProfileReport.tier_breakdown?.easy?.correct || 0}/{savedProfileReport.tier_breakdown?.easy?.total || 0}
@@ -767,7 +825,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               </div>
 
               {/* Medium Bar */}
-              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[90px] text-center">
                 <span className="text-[10px] font-mono text-neon-amber uppercase font-bold block">Medium</span>
                 <span className="text-sm font-bold text-white font-mono">
                   {savedProfileReport.tier_breakdown?.medium?.correct || 0}/{savedProfileReport.tier_breakdown?.medium?.total || 0}
@@ -782,7 +840,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               </div>
 
               {/* Hard Bar */}
-              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[95px] text-center">
+              <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[90px] text-center">
                 <span className="text-[10px] font-mono text-rose-400 uppercase font-bold block">Hard</span>
                 <span className="text-sm font-bold text-white font-mono">
                   {savedProfileReport.tier_breakdown?.hard?.correct || 0}/{savedProfileReport.tier_breakdown?.hard?.total || 0}
@@ -805,27 +863,27 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 handleStartAdaptiveDiagnostic(savedProfileReport.unit_id);
               }}
               disabled={generatingDiagnostic}
-              className="w-full sm:w-auto px-4 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-neon flex items-center justify-center gap-1.5 transition shrink-0 whitespace-nowrap"
+              className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-semibold text-xs transition shrink-0 whitespace-nowrap"
             >
-              <RotateCcw className="w-3.5 h-3.5" /> Retake Diagnostic
+              Retake Diagnostic
             </button>
           </div>
         </div>
       ) : (
-        <div className="rounded-3xl glass-panel p-5 sm:p-6 border border-sky-500/30 bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
-              <BrainCircuit className="w-6 h-6" />
+        <div className="rounded-2xl glass-panel p-5 sm:p-6 border border-sky-500/30 bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400">
+                Skill Level Evaluation
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/20 text-sky-300">CAT Engine</span>
             </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                Evaluate Your Academic Level with Adaptive AI
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/20 text-sky-300">CAT Engine</span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5 max-w-xl">
-                Take our dynamic computer-adaptive quiz to assess your exact proficiency across Easy, Medium, and Hard tiers, complete with strengths and targeted improvement feedback.
-              </p>
-            </div>
+            <h3 className="text-sm sm:text-base font-bold text-white">
+              Evaluate Your Academic Proficiency
+            </h3>
+            <p className="text-xs text-slate-400 max-w-xl">
+              Take the computer-adaptive diagnostic to assess your exact skill level across Easy, Medium, and Hard tiers.
+            </p>
           </div>
 
           <button
@@ -836,9 +894,9 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               handleStartAdaptiveDiagnostic();
             }}
             disabled={generatingDiagnostic || selfPacedTopics.length === 0}
-            className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold shadow-neon flex items-center justify-center gap-2 transition shrink-0 whitespace-nowrap"
+            className="px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-semibold transition shrink-0 whitespace-nowrap"
           >
-            <Sparkles className="w-3.5 h-3.5" /> Start Level Evaluation
+            Start Diagnostic
           </button>
         </div>
       )}
@@ -1615,10 +1673,10 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                         onChange={(e) => setSelectedTopicUnitId(e.target.value)}
                         className="w-full rounded-xl bg-dark-900 border border-slate-700 text-white p-2.5 text-xs font-semibold focus:border-sky-400 focus:outline-none"
                       >
-                        {selfPacedTopics.length === 0 ? (
-                          <option value="">No assigned pack topics available</option>
+                        {displayedSelfPacedTopics.length === 0 ? (
+                          <option value="">No assigned pack topics in this classroom</option>
                         ) : (
-                          selfPacedTopics.map((t) => (
+                          displayedSelfPacedTopics.map((t) => (
                             <option key={t.unit_id} value={t.unit_id}>
                               {t.title} ({t.subject || 'Domain'})
                             </option>
@@ -1630,7 +1688,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     <button
                       type="button"
                       onClick={() => handleStartAdaptiveDiagnostic()}
-                      disabled={generatingDiagnostic || selfPacedTopics.length === 0}
+                      disabled={generatingDiagnostic || displayedSelfPacedTopics.length === 0}
                       className="px-8 py-3 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-extrabold text-xs shadow-[0_0_25px_rgba(56,189,248,0.4)] flex items-center justify-center gap-2 transition shrink-0 self-end sm:self-auto"
                     >
                       {generatingDiagnostic ? (
@@ -1646,13 +1704,13 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   </div>
 
                   {/* Quick Launch Topic Grid */}
-                  {selfPacedTopics.length > 0 && (
+                  {displayedSelfPacedTopics.length > 0 && (
                     <div className="pt-2 space-y-3">
                       <span className="text-xs font-mono font-bold uppercase text-slate-400 block">
                         Quick-Select Topic for Level Evaluation:
                       </span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {selfPacedTopics.map((top) => (
+                        {displayedSelfPacedTopics.map((top) => (
                           <div
                             key={top.unit_id}
                             className="p-4 rounded-2xl bg-dark-950/80 border border-slate-800 hover:border-sky-500/40 transition-all flex flex-col justify-between space-y-3 group"
@@ -1711,7 +1769,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 <h3 className="text-base font-bold text-white">Configure Your AI Practice Session</h3>
               </div>
               <span className="text-xs text-slate-400 font-mono">
-                {selfPacedTopics.length} Available Assigned Topics
+                {displayedSelfPacedTopics.length} Available Assigned Topics
               </span>
             </div>
 
@@ -1727,10 +1785,10 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   onChange={(e) => setSelectedTopicUnitId(e.target.value)}
                   className="w-full rounded-xl bg-dark-900 border border-slate-700 text-white p-2.5 text-xs font-semibold focus:border-sky-400 focus:outline-none"
                 >
-                  {selfPacedTopics.length === 0 ? (
-                    <option value="">No assigned pack topics available</option>
+                  {displayedSelfPacedTopics.length === 0 ? (
+                    <option value="">No assigned pack topics in this classroom</option>
                   ) : (
-                    selfPacedTopics.map((t) => (
+                    displayedSelfPacedTopics.map((t) => (
                       <option key={t.unit_id} value={t.unit_id}>
                         {t.title} ({t.subject || 'Domain'})
                       </option>
@@ -1816,7 +1874,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               <button
                 type="button"
                 onClick={() => handleGenerateSelfPacedTest()}
-                disabled={generatingSelfPaced || selfPacedTopics.length === 0}
+                disabled={generatingSelfPaced || displayedSelfPacedTopics.length === 0}
                 className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-[0_0_20px_rgba(56,189,248,0.35)] flex items-center justify-center gap-2 transition-all shrink-0"
               >
                 {generatingSelfPaced ? (
@@ -1833,13 +1891,13 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
           </div>
 
           {/* Quick-Launch Topic Cards */}
-          {selfPacedTopics.length > 0 && !activeSelfPacedTest && (
+          {displayedSelfPacedTopics.length > 0 && !activeSelfPacedTest && (
             <div className="space-y-3">
               <span className="text-xs font-mono font-bold uppercase text-slate-400 block">
                 Quick-Start Pack Practice Topics:
               </span>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {selfPacedTopics.map((top) => (
+                {displayedSelfPacedTopics.map((top) => (
                   <div
                     key={top.unit_id}
                     className="p-4 rounded-2xl bg-dark-900/80 border border-slate-800 hover:border-sky-500/40 transition-all flex flex-col justify-between space-y-3 group"
@@ -2329,14 +2387,14 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
                     {a.can_attempt ? (
                       <button
-                        onClick={() => onTakeAssessment(a)}
-                        className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition-all"
+                        onClick={() => setConfirmingAssessment(a)}
+                        className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition-all active:scale-95"
                       >
                         Attempt Assessment <ArrowRight className="w-3.5 h-3.5" />
                       </button>
                     ) : (
                       <button
-                        onClick={() => onTakeAssessment(a)}
+                        onClick={() => onTakeAssessment({ ...a, isNewAttempt: false })}
                         className="px-3.5 py-1.5 rounded-xl bg-dark-800 hover:bg-dark-750 text-slate-300 text-xs font-semibold"
                       >
                         View Breakdown
@@ -2377,7 +2435,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 {[
                   { id: 'all', label: 'All' },
                   { id: 'open', label: 'Pending / In Progress' },
-                  { id: 'resolved', label: 'Resolved' }
+                  { id: 'resolved', label: 'Resolved' },
+                  { id: 'rejected', label: 'Declined' }
                 ].map(f => (
                   <button
                     key={f.id}
@@ -2433,6 +2492,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               {displayedRequests.map(req => {
                 const isResolved = req.status === 'resolved' || req.status === 'closed';
                 const isInProgress = req.status === 'in_progress';
+                const isRejected = req.status === 'rejected';
                 return (
                   <div
                     key={req.id}
@@ -2457,10 +2517,12 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                               : isInProgress
                               ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40 animate-pulse'
+                              : isRejected
+                              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                               : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                           }`}
                         >
-                          {isResolved ? 'Resolved' : isInProgress ? 'In Progress' : 'Pending Review'}
+                          {isResolved ? 'Resolved' : isInProgress ? 'In Progress' : isRejected ? 'Declined' : 'Pending Review'}
                         </span>
                       </div>
 
@@ -2483,13 +2545,25 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                           {req.responses.map(resp => (
                             <div
                               key={resp.id}
-                              className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-slate-200 space-y-1"
+                              className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-xs text-slate-200 space-y-1.5"
                             >
                               <div className="flex items-center justify-between text-[10px] text-emerald-400 font-mono">
                                 <span>{resp.user_name} ({resp.user_role})</span>
                                 <span>{new Date(resp.created_at).toLocaleDateString()}</span>
                               </div>
-                              <p className="leading-relaxed text-slate-200">{resp.message}</p>
+                              {resp.message && <p className="leading-relaxed text-slate-200">{resp.message}</p>}
+                              {resp.file_url && (
+                                <a
+                                  href={resp.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-emerald-500/40 hover:border-neon-orange text-emerald-300 hover:text-white transition-all text-xs font-mono group"
+                                >
+                                  <FileText className="w-3.5 h-3.5 text-neon-orange" />
+                                  <span className="font-semibold underline decoration-dotted">{resp.file_name || 'Download Attached Notes / PDF'}</span>
+                                  <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-neon-orange" />
+                                </a>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -2501,6 +2575,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       <span className="text-slate-400">
                         {req.responses && req.responses.length > 0
                           ? `${req.responses.length} reply`
+                          : isRejected
+                          ? 'Request declined'
                           : 'Awaiting faculty review'}
                       </span>
                     </div>
@@ -2704,6 +2780,99 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Formative Assessment Attempt Confirmation Modal */}
+      {confirmingAssessment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-dark-950/85 backdrop-blur-md animate-fade-in">
+          <div className="bg-dark-900 border border-neon-orange/40 rounded-3xl shadow-2xl shadow-neon-orange/20 max-w-lg w-full overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-5 bg-gradient-to-r from-neon-orange/20 via-dark-900 to-dark-900 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange shadow-neon-sm">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Start Formative Assessment?</h3>
+                  <p className="text-xs text-slate-400">Timed Examination Confirmation</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmingAssessment(null)}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-dark-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4 text-xs">
+              {/* Assessment Card Info */}
+              <div className="p-4 rounded-2xl bg-dark-950/90 border border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+                    {confirmingAssessment.subject || confirmingAssessment.domain || 'Domain Assessment'}
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-400">{confirmingAssessment.unit_title}</span>
+                </div>
+                <h4 className="text-base font-bold text-white">{confirmingAssessment.title}</h4>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-mono block">TIME LIMIT</span>
+                  <span className="text-sm font-bold text-white font-mono flex items-center justify-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-neon-orange" />
+                    {confirmingAssessment.time_limit_minutes || 15}m
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-mono block">QUESTIONS</span>
+                  <span className="text-sm font-bold text-white font-mono">
+                    {confirmingAssessment.questions?.length || confirmingAssessment.total_questions || 0} Qs
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center space-y-0.5">
+                  <span className="text-[10px] text-slate-400 font-mono block">ATTEMPTS</span>
+                  <span className="text-sm font-bold text-neon-amber font-mono">
+                    {confirmingAssessment.attempts_remaining !== undefined ? confirmingAssessment.attempts_remaining : (confirmingAssessment.max_attempts - (confirmingAssessment.attempts_used || 0))} Left
+                  </span>
+                </div>
+              </div>
+
+              {/* Guidelines / Advisory Notice */}
+              <div className="p-3.5 rounded-2xl bg-amber-950/20 border border-amber-500/30 text-amber-200 space-y-1.5 leading-relaxed">
+                <div className="flex items-center gap-2 font-bold text-amber-400 font-mono text-[11px]">
+                  <AlertCircle className="w-4 h-4 shrink-0" /> Important Examination Guidelines:
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px] pl-1">
+                  <li>The timer begins immediately once you enter the assessment.</li>
+                  <li>Browser fullscreen mode will be activated to protect exam integrity.</li>
+                  <li>Do not close or refresh your browser tab while answering.</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-dark-950 border-t border-slate-800 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmingAssessment(null)}
+                className="px-4 py-2.5 rounded-xl bg-dark-800 hover:bg-dark-750 text-slate-300 hover:text-white text-xs font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmStartAssessment}
+                className="btn-royal text-xs px-5 py-2.5 shadow-neon flex items-center gap-2 font-bold active:scale-95"
+              >
+                Confirm & Start Assessment <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
       )}

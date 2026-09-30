@@ -1,15 +1,17 @@
 import os
 import json
 import re
-import time
 import requests
+import time
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
 
+load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 CANDIDATE_MODELS = [
-    "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
     "gemini-3.5-flash",
     "gemini-flash-latest"
 ]
@@ -47,21 +49,27 @@ def optimize_image_for_ocr(image_bytes: bytes, max_dim: int = OCR_MAX_DIM) -> tu
         return image_bytes, "image/jpeg"
 
 
-def _post_fast(url: str, payload: dict, timeout: int) -> Optional[requests.Response]:
+def _post_fast(url: str, payload: dict, timeout: int, max_retries: int = 2) -> Optional[requests.Response]:
     """
-    Single-attempt POST for Gemini JSON calls.
-    On any non-200 (including 429), returns None immediately so the caller
-    can try the next model — no sleeping, keeping lesson generation fast.
+    POST for Gemini JSON calls with smart micro-retry on 429 rate-limit burst.
     """
-    try:
-        res = requests.post(
-            url, json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=timeout
-        )
-        return res if res.status_code == 200 else None
-    except Exception:
-        return None
+    for attempt in range(max_retries + 1):
+        try:
+            res = requests.post(
+                url, json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=timeout
+            )
+            if res.status_code == 200:
+                return res
+            elif res.status_code == 429 and attempt < max_retries:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            else:
+                return None
+        except Exception:
+            return None
+    return None
 
 
 def _post_with_backoff(url: str, payload: dict, timeout: int, max_retries: int = 3) -> Optional[requests.Response]:

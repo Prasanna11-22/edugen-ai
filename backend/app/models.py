@@ -301,6 +301,8 @@ class RequestResponse(Base):
     request_id = Column(Integer, ForeignKey("student_requests.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     message = Column(Text, nullable=False)
+    file_url = Column(String(500), nullable=True)
+    file_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     request = relationship("StudentRequest", back_populates="responses")

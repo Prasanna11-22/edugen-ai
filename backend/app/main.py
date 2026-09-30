@@ -30,6 +30,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+from fastapi.staticfiles import StaticFiles
+
+# Ensure uploads directory exists
+os.makedirs("uploads/request_responses", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Mount Routers
 app.include_router(auth_router.router)
 app.include_router(admin_router.router)
@@ -37,6 +44,14 @@ app.include_router(teacher_router.router)
 app.include_router(student_router.router)
 app.include_router(eval_router.router)
 app.include_router(ocr_router.router)
+
+@app.on_event("startup")
+def preload_models():
+    try:
+        from .services.proctor_service import get_yolo_model
+        get_yolo_model()
+    except Exception as e:
+        print(f"[Startup Warning] Could not preload YOLOv8: {e}")
 
 @app.get("/")
 def root():

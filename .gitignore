@@ -29,6 +29,8 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/exports/*
 !backend/exports/.gitkeep
+uploads/
+*.pt
 
 # IDE & System
 .DS_Store

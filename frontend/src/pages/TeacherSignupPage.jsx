@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Flame, User, Mail, Lock, Building, ArrowRight, CheckCircle2, Clock, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, Building, ArrowRight, CheckCircle2, Clock, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import Badge from '../components/Badge';
+import { RetrievoIcon } from '../components/RetrievoLogo';
 
 const TeacherSignupPage = ({ onNavigate }) => {
   const { signupTeacher } = useAuth();
@@ -33,8 +34,8 @@ const TeacherSignupPage = ({ onNavigate }) => {
       
       {/* Brand Header */}
       <div className="text-center mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange flex items-center justify-center shadow-neon mx-auto mb-4">
-          <Flame className="w-8 h-8 text-white" />
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange p-1.5 shadow-neon mx-auto mb-4 flex items-center justify-center">
+          <RetrievoIcon className="w-10 h-10 drop-shadow-md" />
         </div>
         <h2 className="text-2xl font-bold text-white">Teacher Registration</h2>
         <p className="text-xs text-slate-400 mt-1">Gated educator studio access with administrative approval flow</p>

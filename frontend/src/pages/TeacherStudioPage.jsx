@@ -6,7 +6,7 @@ import {
   BookOpen, Edit3, RefreshCw, Send, Check, ShieldCheck, Hash, Target, 
   ArrowRight, ShieldAlert, FileCode, CheckSquare, Plus, Trash2, Calendar, Clock,
   Eye, BarChart3, Users, ChevronRight, FileCheck, Search, HelpCircle, Library, Database, Lock, X, Key, Lightbulb, History, CheckCheck,
-  Sliders, Scan, ChevronDown, ChevronUp
+  Sliders, Scan, ChevronDown, ChevronUp, RotateCcw
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -14,6 +14,7 @@ import ProvenanceViewer from '../components/ProvenanceViewer';
 import GuardrailAlerts from '../components/GuardrailAlerts';
 import ValidationSuggestionModal from '../components/ValidationSuggestionModal';
 import CoverageWarningModal from '../components/CoverageWarningModal';
+import GenerationLoadingModal from '../components/GenerationLoadingModal';
 
 const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => {
   const { token, user } = useAuth();
@@ -81,6 +82,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const [regenReasonCategory, setRegenReasonCategory] = useState('Ambiguous wording');
   const [regenReasonComment, setRegenReasonComment] = useState('');
   const [regeneratingQuizItems, setRegeneratingQuizItems] = useState(false);
+
+  // Quiz Full Version History Modal State
+  const [showQuizVersionHistoryModal, setShowQuizVersionHistoryModal] = useState(false);
+  const [selectedHistoryVersionId, setSelectedHistoryVersionId] = useState(null);
+  const [restoringVersion, setRestoringVersion] = useState(false);
 
   // History Modal State
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -164,7 +170,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         const data = await res.json();
         setUnitDetails(data);
         if (data.objectives && data.objectives.length > 0) {
-          setSelectedReviewObjectiveId(prev => prev || data.objectives[0].id);
+          const validIds = data.objectives.map(o => o.id);
+          setSelectedReviewObjectiveId(prev => (validIds.includes(prev) ? prev : validIds[0]));
+        } else {
+          setSelectedReviewObjectiveId(null);
         }
         if (data.assigned_classrooms) {
           setSelectedClassroomIds(data.assigned_classrooms.map(c => c.id));
@@ -472,14 +481,20 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   };
 
   const executeCreateUnit = async (customObjectives = null, lowConfTexts = []) => {
-    const objsToUse = customObjectives || objectives;
+    const rawObjs = customObjectives || objectives;
+    const objsToUse = rawObjs.filter(o => o.text && o.text.trim().length > 0);
+    if (objsToUse.length === 0) {
+      showToast("Please enter at least one learning objective description.", "error");
+      setGenerating(false);
+      return;
+    }
     setGenerating(true);
     try {
       const formData = new FormData();
-      formData.append('title', unitTitle);
-      formData.append('source_title', sourceTitle);
+      formData.append('title', unitTitle.trim());
+      formData.append('source_title', sourceTitle.trim());
       const formattedObjectives = objsToUse.map(o => ({
-        text: o.text,
+        text: o.text.trim(),
         bloom_level: o.bloom_level,
         target_level: o.target_level,
         constraints: {
@@ -503,6 +518,29 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
       const newUnitId = data.unit_id;
       setCurrentUnitId(newUnitId);
+
+      // Auto-assign to selected classrooms if any selected in Step 3
+      if (selectedClassroomIds.length > 0) {
+        try {
+          await fetch('/api/teacher/units/assign-to-classrooms', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              unit_id: newUnitId,
+              classroom_ids: selectedClassroomIds.map(Number),
+              auto_approve: autoApproveOnAssign,
+              due_date: dueDate || null,
+              max_attempts: maxAttempts,
+              time_limit_minutes: Number(timeLimitMinutes) || 15
+            })
+          });
+        } catch (assignErr) {
+          console.warn("Classroom auto-assignment notice:", assignErr);
+        }
+      }
       
       // Immediately generate full pack in Draft mode for teacher review with low confidence tags
       await handleGenerateFullPackWithUnit(newUnitId, lowConfTexts);
@@ -510,6 +548,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       setActiveStudioTab('review');
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
       setGenerating(false);
     }
   };
@@ -575,7 +614,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   const handleCreateUnitAndUpload = async (e) => {
     e.preventDefault();
     if (!unitTitle.trim() || !sourceTitle.trim()) {
-      showToast("Please specify unit and source titles.", "error");
+      showToast("Please specify both Knowledge Unit Title and Source Title.", "error");
+      const titleInput = document.querySelector('input[placeholder*="Unit 4"]') || document.querySelector('input[placeholder*="Chapter 4"]');
+      if (titleInput) {
+        titleInput.focus();
+        titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
     
@@ -587,72 +631,97 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
     if (!sourceFile && !sourceRawText.trim()) {
       showToast("Please upload a PDF source document or paste authoritative text.", "error");
+      const uploadArea = document.querySelector('input[type="file"]') || document.querySelector('textarea');
+      if (uploadArea) {
+        uploadArea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       return;
     }
 
-    // Prepare chunks for source coverage validation
-    let availableChunks = previewChunksData?.chunks?.map(c => c.text) || [];
-    if (availableChunks.length === 0 && sourceFile && !sourceRawText.trim()) {
-      try {
-        const fd = new FormData();
-        fd.append('file', sourceFile);
-        const pRes = await fetch('/api/teacher/preview-chunks', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` },
-          body: fd
-        });
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          if (pData.chunks) {
-            availableChunks = pData.chunks.map(c => c.text);
-            setPreviewChunksData(pData);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not preview chunks for coverage check:", err);
+    // Filter valid objectives with non-empty text
+    const validObjectives = objectives.filter(o => o.text && o.text.trim().length > 0);
+    if (validObjectives.length === 0) {
+      showToast("Please enter at least one learning objective description.", "error");
+      const objInput = document.querySelector('input[data-obj-index]');
+      if (objInput) {
+        objInput.focus();
+        objInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
+      return;
     }
 
-    // Source Coverage Check: Evaluate each objective against source chunks
-    for (let i = 0; i < objectives.length; i++) {
-      const obj = objectives[i];
-      const cleanText = obj.text.trim();
-      if (cleanText && !lowConfidenceObjTexts.includes(cleanText)) {
+    // Immediately activate multi-stage AI generation loading animation
+    setGenerating(true);
+
+    try {
+      // Prepare chunks for source coverage validation
+      let availableChunks = previewChunksData?.chunks?.map(c => c.text) || [];
+      if (availableChunks.length === 0 && sourceFile && !sourceRawText.trim()) {
         try {
-          const covRes = await fetch('/api/teacher/check-objective-coverage', {
+          const fd = new FormData();
+          fd.append('file', sourceFile);
+          const pRes = await fetch('/api/teacher/preview-chunks', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              objective_text: cleanText,
-              source_text: sourceRawText?.trim() || null,
-              chunks: availableChunks.length > 0 ? availableChunks : null,
-              threshold: 0.55
-            })
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: fd
           });
-          if (covRes.ok) {
-            const covData = await covRes.json();
-            if (!covData.is_covered && covData.best_match_score < covData.threshold) {
-              setCoverageWarningData({
-                objectiveIndex: i,
-                objectiveText: cleanText,
-                bestMatchScore: covData.best_match_score,
-                threshold: covData.threshold,
-                coverageNote: covData.source_coverage_note
-              });
-              setCoverageModalOpen(true);
-              return; // Stop and display popup for teacher decision
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (pData.chunks) {
+              availableChunks = pData.chunks.map(c => c.text);
+              setPreviewChunksData(pData);
             }
           }
         } catch (err) {
-          console.warn("Objective coverage check failed:", err);
+          console.warn("Could not preview chunks for coverage check:", err);
         }
       }
-    }
 
-    await executeCreateUnit(objectives, lowConfidenceObjTexts);
+      // Source Coverage Check: Evaluate each objective against source chunks
+      for (let i = 0; i < validObjectives.length; i++) {
+        const obj = validObjectives[i];
+        const cleanText = obj.text.trim();
+        if (cleanText && !lowConfidenceObjTexts.includes(cleanText)) {
+          try {
+            const covRes = await fetch('/api/teacher/check-objective-coverage', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                objective_text: cleanText,
+                source_text: sourceRawText?.trim() || null,
+                chunks: availableChunks.length > 0 ? availableChunks : null,
+                threshold: 0.55
+              })
+            });
+            if (covRes.ok) {
+              const covData = await covRes.json();
+              if (!covData.is_covered && covData.best_match_score < covData.threshold) {
+                setGenerating(false);
+                setCoverageWarningData({
+                  objectiveIndex: i,
+                  objectiveText: cleanText,
+                  bestMatchScore: covData.best_match_score,
+                  threshold: covData.threshold,
+                  coverageNote: covData.source_coverage_note
+                });
+                setCoverageModalOpen(true);
+                return; // Stop and display popup for teacher decision
+              }
+            }
+          } catch (err) {
+            console.warn("Objective coverage check failed:", err);
+          }
+        }
+      }
+
+      await executeCreateUnit(validObjectives, lowConfidenceObjTexts);
+    } catch (err) {
+      setGenerating(false);
+      showToast(err.message || "Lesson generation failed", "error");
+    }
   };
 
   const handleGenerateFullPackWithUnit = async (unitId, lowConfTexts = []) => {
@@ -745,6 +814,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       if (!res.ok) throw new Error(data.detail || data.message || 'Regeneration failed');
       showToast(`Regenerated ${assetType} as immutable Version ${data.version_no}`, "success");
       await fetchUnitDetails(currentUnitId);
+      const activeId = data.asset_id || currentActiveAsset?.asset_id || currentActiveAsset?.id;
+      if (assetType === 'quiz' && activeId) {
+        await fetchQuizItems(activeId);
+        setSelectedQuizItemIds([]);
+      }
     } catch (err) {
       showToast(err.message, "error");
     } finally {
@@ -771,6 +845,43 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       }
     } catch (err) {
       showToast(err.message, "error");
+    }
+  };
+
+  const handleOpenQuizVersionHistory = () => {
+    const activeAsset = getActiveAsset();
+    const versions = activeAsset?.all_versions || [];
+    if (versions.length > 0) {
+      setSelectedHistoryVersionId(versions[0].id);
+    }
+    setShowQuizVersionHistoryModal(true);
+  };
+
+  const handleRestoreVersion = async (versionId) => {
+    if (!versionId) return;
+    setRestoringVersion(true);
+    try {
+      const res = await fetch(`/api/teacher/asset-versions/${versionId}/restore`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await safeApiResponse(res, 'Failed to restore version');
+      if (!res.ok) throw new Error(data.detail || data.message || 'Failed to restore version');
+      showToast(data.message || `Restored Version ${data.version_no} successfully!`, "success");
+      await fetchUnitDetails(currentUnitId);
+      const activeId = data.asset_id || currentActiveAsset?.asset_id || currentActiveAsset?.id;
+      if (activeId) {
+        await fetchQuizItems(activeId);
+        setSelectedQuizItemIds([]);
+      }
+      setShowQuizVersionHistoryModal(false);
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setRestoringVersion(false);
     }
   };
 
@@ -1215,8 +1326,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
   };
 
   const removeObjective = (index) => {
-    if (objectives.length <= 2) {
-      showToast("Minimum 2 objectives required", "info");
+    if (objectives.length <= 1) {
+      showToast("At least 1 learning objective is required", "info");
       return;
     }
     setObjectives(objectives.filter((_, i) => i !== index));
@@ -1230,12 +1341,13 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
   // Find active asset in unit details matching current tab and objective
   const getActiveAsset = () => {
-    if (!unitDetails?.assets) return null;
+    if (!unitDetails?.assets || unitDetails.assets.length === 0) return null;
     if (selectedReviewObjectiveId) {
       const match = unitDetails.assets.find(a => a.type === activeAssetTab && a.objective_id === selectedReviewObjectiveId);
       if (match) return match;
     }
-    return unitDetails.assets.find(a => a.type === activeAssetTab);
+    const fallback = unitDetails.assets.find(a => a.type === activeAssetTab);
+    return fallback || null;
   };
 
   const currentActiveAsset = getActiveAsset();
@@ -1375,7 +1487,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       {/* SUB-TAB 1: INGEST & BUILD CONTRACT (Creation Wizard with Chunker Inspector) */}
       {/* ========================================================================= */}
       {activeStudioTab === 'ingest' && (
-        <form onSubmit={handleCreateUnitAndUpload} className="space-y-8 animate-in fade-in">
+        <form onSubmit={handleCreateUnitAndUpload} noValidate className="space-y-8 animate-in fade-in">
           
           {/* STEP 1: Two-Column Upload, OCR Review Gate & Semantic Chunker Inspector */}
           <div className="rounded-2xl glass-panel p-6 sm:p-7 border border-neon-orange/30 shadow-neon space-y-5">
@@ -1435,7 +1547,6 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       if (!unitTitle) setUnitTitle(e.target.value);
                     }}
                     placeholder="e.g. Chapter 4: Distributed Networking & Transport Layers"
-                    required
                     className="w-full rounded-xl glass-input p-2.5 text-xs font-semibold"
                   />
                 </div>
@@ -1449,7 +1560,6 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     value={unitTitle}
                     onChange={(e) => setUnitTitle(e.target.value)}
                     placeholder="e.g. Unit 4: TCP Handshake, UDP Sockets & Flow Control"
-                    required
                     className="w-full rounded-xl glass-input p-2.5 text-xs font-semibold"
                   />
                 </div>
@@ -1845,7 +1955,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     <span className="text-xs font-mono font-bold text-neon-orange">
                       Objective #{idx + 1}
                     </span>
-                    {objectives.length > 2 && (
+                    {objectives.length > 1 && (
                       <button
                         type="button"
                         onClick={() => removeObjective(idx)}
@@ -1863,7 +1973,6 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       value={obj.text}
                       onChange={(e) => updateObjective(idx, 'text', e.target.value)}
                       placeholder="e.g. Explain how ATP synthase uses proton gradients to generate ATP..."
-                      required
                       className="flex-1 rounded-xl glass-input p-2.5 text-xs"
                     />
                     <button
@@ -2066,15 +2175,21 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             <button
               type="submit"
               disabled={generating}
-              className="btn-royal text-sm px-8 py-3.5 shadow-neon"
+              className="btn-royal text-sm px-9 py-4 shadow-neon relative group overflow-hidden transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
             >
+              {/* Moving light shimmer sweep */}
+              <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
+
               {generating ? (
-                <span className="flex items-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" /> Chunking, Generating & Assigning Lesson Pack...
+                <span className="flex items-center gap-2.5 font-bold">
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>Synthesizing Lesson Pack & Deploying...</span>
                 </span>
               ) : (
-                <span className="flex items-center gap-2">
-                  Generate Lesson Pack & Deploy <ArrowRight className="w-4 h-4" />
+                <span className="flex items-center gap-2.5 font-bold">
+                  <Sparkles className="w-4 h-4 text-white animate-pulse" />
+                  <span>Generate Lesson Pack & Deploy</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </span>
               )}
             </button>
@@ -2480,16 +2595,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                             <div className="flex items-center gap-2">
                               {currentActiveAsset.type === 'quiz' && (
                                 <button
-                                  onClick={() => {
-                                    if (quizItemsList && quizItemsList.length > 0) {
-                                      handleOpenItemHistory(quizItemsList[0]);
-                                    } else if (content.questions && content.questions.length > 0) {
-                                      handleOpenItemHistory({ item_index: 0, question_text: content.questions[0].question || content.questions[0].question_text });
-                                    }
-                                  }}
-                                  className="px-3 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                                  onClick={handleOpenQuizVersionHistory}
+                                  className="px-3 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all hover:border-neon-orange"
                                 >
-                                  <Clock className="w-3.5 h-3.5 text-neon-orange" /> Quiz History
+                                  <Clock className="w-3.5 h-3.5 text-neon-orange" /> Quiz History ({currentActiveAsset.all_versions?.length || 1})
                                 </button>
                               )}
                               {ver.low_confidence || content.low_confidence ? (
@@ -2819,14 +2928,6 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                     >
                                                       <Edit3 className="w-3 h-3 text-neon-orange" /> Edit
                                                     </button>
-
-                                                    <button
-                                                      onClick={() => handleOpenItemHistory(q)}
-                                                      className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-mono flex items-center gap-1 transition-all"
-                                                    >
-                                                      <Clock className="w-3 h-3 text-neon-orange" />
-                                                      History ({q.version_count || q.versions_count || q.current_version_no || 1})
-                                                    </button>
                                                   </div>
                                                 </div>
 
@@ -3029,7 +3130,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
                               {activeAssetTab === 'quiz' && (
                                 <button
-                                  onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id)}
+                                  onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id, quizCountToGenerate, quizDifficultyToGenerate)}
                                   disabled={generating}
                                   className="px-3 py-1.5 rounded-xl bg-neon-orange/20 hover:bg-neon-orange text-neon-glow hover:text-white border border-neon-orange/40 text-xs font-semibold flex items-center gap-1.5 transition-all"
                                 >
@@ -3204,199 +3305,254 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         </div>
       )}
 
-      {/* QUESTION VERSION HISTORY MODAL */}
-      {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-dark-950/90 backdrop-blur z-10">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">
-                    Question #{historyItem ? historyItem.item_index + 1 : ''} Version History
-                  </h3>
-                  <p className="text-[11px] font-mono text-slate-400">
-                    Full audit trail of all previous revisions, teacher reasons & changes
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowHistoryModal(false);
-                  setHistoryData(null);
-                }}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-800 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* QUIZ ASSET FULL VERSION HISTORY MODAL */}
+      {showQuizVersionHistoryModal && currentActiveAsset && (() => {
+        const versions = currentActiveAsset.all_versions || [];
+        const currentActiveVerNo = currentActiveAsset.latest_version?.version_no || 1;
+        const activeSelectedVer = versions.find(v => v.id === selectedHistoryVersionId) || versions[0] || currentActiveAsset.latest_version;
+        const verContent = activeSelectedVer?.content_json || {};
+        const questionsList = verContent.questions || [];
+        const isCurrentActive = activeSelectedVer?.version_no === currentActiveVerNo;
 
-            {loadingHistory ? (
-              <div className="py-16 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
-                Loading version history timeline...
-              </div>
-            ) : historyData && historyData.history && historyData.history.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
-                  <span>Total Iterations: <strong className="text-neon-amber font-mono">{historyData.history.length}</strong></span>
-                  <span className="font-mono text-[10px] text-neon-orange">Current Status: {historyData.current_status?.toUpperCase()}</span>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
+            <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl glass-panel-accent border border-neon-orange/40 shadow-neon overflow-hidden bg-dark-950/95">
+              
+              {/* Modal Top Header */}
+              <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800/90 bg-dark-900/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange shadow-neon-sm shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                      Quiz Version History
+                      <span className="text-xs font-mono font-normal text-slate-400">({versions.length} versions recorded)</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      View all past questions for v1, v2, v3... and easily apply any version to replace current active questions.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowQuizVersionHistoryModal(false)}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-dark-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-                <div className="space-y-4">
-                  {historyData.history.map((ver, vIdx) => {
-                    const isLatest = vIdx === 0;
+              {/* Modal Body: Sidebar Version Selector + Main Version Questions View */}
+              <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-slate-800/80">
+                
+                {/* Left Column: Version Pills List (4 cols) */}
+                <div className="md:col-span-4 p-4 overflow-y-auto max-h-[35vh] md:max-h-[70vh] space-y-2.5 bg-dark-950/60">
+                  <div className="text-[11px] font-mono text-slate-400 font-semibold px-2 mb-1 uppercase tracking-wider">
+                    Available Versions
+                  </div>
+                  {versions.map((v) => {
+                    const isSelected = (activeSelectedVer?.id === v.id);
+                    const isActive = (v.version_no === currentActiveVerNo);
+                    const qCount = v.questions_count || v.content_json?.questions?.length || 0;
+
                     return (
-                      <div
-                        key={ver.version_no}
-                        className={`p-4 rounded-2xl border space-y-3 transition ${
-                          isLatest 
-                            ? 'bg-dark-900/90 border-neon-orange/50 shadow-neon-sm' 
-                            : 'bg-dark-950/80 border-slate-800 text-slate-400'
+                      <button
+                        key={v.id || v.version_no}
+                        onClick={() => setSelectedHistoryVersionId(v.id)}
+                        className={`w-full text-left p-3.5 rounded-2xl transition-all border flex flex-col gap-1.5 ${
+                          isSelected
+                            ? 'bg-neon-orange/15 border-neon-orange text-white shadow-neon-sm'
+                            : 'bg-dark-900/90 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:bg-dark-850'
                         }`}
                       >
-                        {/* Version Header */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className={`px-2.5 py-0.5 rounded-full font-mono text-xs font-bold ${
-                              isLatest 
-                                ? 'bg-neon-orange text-white' 
-                                : 'bg-dark-800 text-slate-400 border border-slate-700'
-                            }`}>
-                              Version {ver.version_no} {isLatest && '(Current)'}
-                            </span>
-                            {ver.regen_reason_category && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
-                                {ver.regen_reason_category}
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs flex items-center gap-1.5">
+                            <span className="font-mono text-neon-orange font-bold text-sm">Version {v.version_no}</span>
+                            {isActive && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                                ACTIVE
                               </span>
                             )}
-                          </div>
-
-                          <div className="text-[11px] font-mono text-slate-400 flex items-center gap-2">
-                            <span>By: <strong className="text-slate-200">{ver.triggered_by_name || 'Teacher'}</strong></span>
-                            <span>·</span>
-                            <span>{new Date(ver.created_at).toLocaleString()}</span>
-                          </div>
+                          </span>
+                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
+                            v.status === 'approved' 
+                              ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30' 
+                              : 'bg-amber-950/80 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {(v.status || 'draft').toUpperCase()}
+                          </span>
                         </div>
-
-                        {/* Regeneration Reason Callout */}
-                        {ver.regen_reason && (
-                          <div className="p-2.5 rounded-xl bg-dark-950 border border-slate-800 text-xs text-slate-300">
-                            <strong className="text-neon-orange font-mono text-[11px] block">Teacher Revision Prompt:</strong>
-                            <p className="italic text-slate-200 mt-0.5">"{ver.regen_reason}"</p>
-                          </div>
-                        )}
-
-                        {/* Question Text */}
-                        <div className="text-xs font-bold text-white leading-relaxed">
-                          {ver.question_text}
+                        <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                          <span>{qCount} Questions</span>
+                          <span>{new Date(v.created_at).toLocaleDateString()}</span>
                         </div>
-
-                        {/* Options */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                          {ver.options && Object.entries(ver.options).map(([optKey, optVal]) => {
-                            const isCorrect = optKey.toUpperCase() === (ver.correct_option_id || '').toUpperCase();
-                            return (
-                              <div
-                                key={optKey}
-                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1.5 ${
-                                  isCorrect 
-                                    ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' 
-                                    : 'bg-dark-900 border-slate-800 text-slate-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
-                                    {optKey})
-                                  </span>
-                                  <span>{optVal}</span>
-                                </div>
-                                {isCorrect && (
-                                  <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0">
-                                    ✓ Key
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
-              </div>
-            ) : historyItem ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between text-xs text-slate-400 pb-1 border-b border-slate-800/80">
-                  <span>Total Iterations: <strong className="text-neon-amber font-mono">1</strong></span>
-                  <span className="font-mono text-[10px] text-neon-orange">Current Status: {(historyItem.status || 'draft').toUpperCase()}</span>
-                </div>
-                <div className="p-4 rounded-2xl border bg-dark-900/90 border-neon-orange/50 shadow-neon-sm space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-0.5 rounded-full font-mono text-xs font-bold bg-neon-orange text-white">
-                        Version {historyItem.current_version_no || 1} (Current)
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
-                        Initial Generation
-                      </span>
+
+                {/* Right Column: Selected Version Questions & Restore Action (8 cols) */}
+                <div className="md:col-span-8 p-5 sm:p-6 overflow-y-auto max-h-[55vh] md:max-h-[70vh] space-y-5 bg-dark-900/40">
+                  {/* Top Bar for Selected Version */}
+                  <div className="p-4 rounded-2xl bg-dark-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-white font-mono">
+                          Version {activeSelectedVer?.version_no}
+                        </span>
+                        {isCurrentActive ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">
+                            Current Active
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-dark-850 text-slate-400 border border-slate-700">
+                            Historical Snapshot
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        Total {questionsList.length} questions • Generated on {new Date(activeSelectedVer?.created_at).toLocaleString()}
+                      </p>
+                    </div>
+
+                    {/* Apply / Restore Button */}
+                    <div>
+                      {isCurrentActive ? (
+                        <div className="px-3.5 py-2 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-1.5">
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span>Currently Active</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleRestoreVersion(activeSelectedVer?.id)}
+                          disabled={restoringVersion}
+                          className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold flex items-center gap-2 shadow-neon transition active:scale-95 disabled:opacity-50"
+                        >
+                          {restoringVersion ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Applying Version...</span>
+                            </>
+                          ) : (
+                            <>
+                              <RotateCcw className="w-4 h-4" />
+                              <span>Apply & Restore v{activeSelectedVer?.version_no}</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="text-xs font-bold text-white leading-relaxed">
-                    {historyItem.question_text || historyItem.question}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                    {historyItem.options && Object.entries(historyItem.options).map(([optKey, optVal]) => {
-                      const isCorrect = optKey.toUpperCase() === (historyItem.correct_option_id || historyItem.correct_option || 'A').toUpperCase();
-                      return (
-                        <div
-                          key={optKey}
-                          className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-1.5 ${
-                            isCorrect 
-                              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300' 
-                              : 'bg-dark-900 border-slate-800 text-slate-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
-                              {optKey})
-                            </span>
-                            <span>{optVal}</span>
+
+                  {/* Questions List for the selected version */}
+                  <div className="space-y-3">
+                    <div className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider">
+                      Questions in Version {activeSelectedVer?.version_no} ({questionsList.length})
+                    </div>
+                    {questionsList.length > 0 ? (
+                      questionsList.map((q, qIdx) => {
+                        const qStem = q.question_text || q.question || q.stem || `Question ${qIdx + 1}`;
+                        const opts = q.options || {};
+                        const corr = (q.correct_option_id || q.correct_option || q._correct_option || 'A').toUpperCase();
+                        const tier = q.difficulty_tier || 'Medium';
+                        const bloom = q.bloom_level || 'Understand';
+                        const rat = q.rationale || q.explanation || '';
+                        const cit = q.source_citation || q.citation || '';
+
+                        return (
+                          <div key={q.id || qIdx} className="p-4 rounded-xl bg-dark-950 border border-slate-800/90 space-y-3">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2">
+                                <span className="font-mono text-xs font-bold text-neon-orange">
+                                  Q{qIdx + 1}.
+                                </span>
+                                <span className="text-xs font-semibold text-white leading-relaxed font-sans">
+                                  {qStem}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
+                                  {tier}
+                                </span>
+                                <Badge variant="royal">{bloom}</Badge>
+                              </div>
+                            </div>
+
+                            {/* Options */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
+                              {Object.entries(opts).map(([optKey, optVal]) => {
+                                const isCorrect = optKey.toUpperCase() === corr;
+                                return (
+                                  <div
+                                    key={optKey}
+                                    className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-1.5 ${
+                                      isCorrect
+                                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 shadow-sm'
+                                        : 'bg-dark-900 border-slate-800 text-slate-300'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                                        {optKey})
+                                      </span>
+                                      <span>{optVal}</span>
+                                    </div>
+                                    {isCorrect && (
+                                      <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0 flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Key
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Rationale & Citation */}
+                            {(rat || cit) && (
+                              <div className="p-2.5 rounded-xl bg-dark-900/80 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                                {rat && (
+                                  <div>
+                                    <strong className="text-neon-orange">Rationale:</strong> {rat}
+                                  </div>
+                                )}
+                                {cit && (
+                                  <div>
+                                    <strong className="text-neon-amber">Citation:</strong> {cit}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {isCorrect && (
-                            <span className="text-[10px] font-mono font-bold text-emerald-400 shrink-0">
-                              ✓ Key
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      <div className="py-10 text-center text-xs text-slate-500 bg-dark-950 rounded-2xl border border-slate-800">
+                        No question snapshot stored for this version.
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="py-12 text-center text-xs text-slate-400">
-                No past versions recorded for this question item.
-              </div>
-            )}
 
-            <div className="pt-2 border-t border-slate-800 flex justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowHistoryModal(false);
-                  setHistoryData(null);
-                }}
-                className="px-4 py-2 rounded-xl text-xs bg-dark-800 hover:bg-dark-700 text-slate-300 transition"
-              >
-                Close History
-              </button>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-800/90 bg-dark-950 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {versions.length} versions in history • Applying any version will replace current questions and sync answer keys.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowQuizVersionHistoryModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-dark-800 hover:bg-dark-700 text-slate-300 transition"
+                >
+                  Close History
+                </button>
+              </div>
+
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       
       {/* QUESTION MANUAL EDIT MODAL */}
@@ -3794,7 +3950,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         onCancelObjective={() => {
           const discardIdx = coverageWarningData.objectiveIndex;
           setCoverageModalOpen(false);
-          if (objectives.length > 2) {
+          if (objectives.length > 1) {
             const updated = objectives.filter((_, idx) => idx !== discardIdx);
             setObjectives(updated);
             showToast("Unsupported objective discarded.", "info");
@@ -3805,6 +3961,14 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             showToast("Objective cleared. Please enter a covered objective.", "info");
           }
         }}
+      />
+
+      {/* Multi-Stage AI Lesson Generation Animation Modal */}
+      <GenerationLoadingModal
+        isOpen={generating}
+        unitTitle={unitTitle || unitDetails?.unit?.title || "Lesson Pack"}
+        sourceTitle={sourceTitle || unitDetails?.source?.title || ""}
+        objectivesCount={objectives.filter(o => o.text && o.text.trim()).length || unitDetails?.objectives?.length || 2}
       />
 
     </div>

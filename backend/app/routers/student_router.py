@@ -11,12 +11,14 @@ from ..models import (
     StudentRequest, RequestResponse
 )
 from ..schemas import (
-    JoinClassroomRequest, SubmitAssessmentRequest, SelfPacedTestGenerateRequest,
-    StudentRequestCreate, DiagnosticPoolRequest, DiagnosticEvaluateRequest
+    JoinClassroomRequest, StartAssessmentRequest, SubmitAssessmentRequest, SelfPacedTestGenerateRequest,
+    StudentRequestCreate, DiagnosticPoolRequest, DiagnosticEvaluateRequest,
+    ProctorFrameRequest, VoidAttemptRequest
 )
 from ..auth import student_required, student_required_flexible
 from ..services.pdf_exporter import generate_learning_pack_pdf
 from ..services.rag_engine import generate_formative_quiz, generate_diagnostic_pool
+from ..services.proctor_service import analyze_proctor_frame
 
 router = APIRouter(prefix="/api/student", tags=["Student Portal"])
 
@@ -331,32 +333,43 @@ def get_assigned_assessments(classroom_id: int, db: Session = Depends(get_db), c
 # AI-POWERED SELF-PACED PRACTICE GENERATOR (GEMINI AI)
 # ----------------------------------------------------------------------
 @router.get("/self-paced/topics")
-def get_self_paced_topics(db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+def get_self_paced_topics(
+    classroom_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
     """Returns available topics from all approved packs in enrolled classrooms."""
     enrollments = db.query(Enrollment).filter(Enrollment.student_id == current_student.id, Enrollment.status == "approved").all()
-    classroom_ids = [e.classroom_id for e in enrollments]
-    if not classroom_ids:
+    all_classroom_ids = [e.classroom_id for e in enrollments]
+    if not all_classroom_ids:
         return []
     
+    target_classrooms = [classroom_id] if classroom_id and classroom_id in all_classroom_ids else all_classroom_ids
+    
     assignments = db.query(Assignment).filter(
-        Assignment.classroom_id.in_(classroom_ids),
+        Assignment.classroom_id.in_(target_classrooms),
         Assignment.status == "active"
     ).all()
     
     unit_ids = set()
+    unit_to_classrooms = {}
     for a in assignments:
         ver = db.query(AssetVersion).filter(AssetVersion.id == a.asset_version_id).first()
         if ver:
             asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
             if asset:
                 unit_ids.add(asset.unit_id)
+                if asset.unit_id not in unit_to_classrooms:
+                    unit_to_classrooms[asset.unit_id] = set()
+                unit_to_classrooms[asset.unit_id].add(a.classroom_id)
                 
     units = db.query(Unit).filter(Unit.id.in_(list(unit_ids))).all()
     
     topics = []
     for u in units:
         objs = db.query(Objective).filter(Objective.unit_id == u.id).all()
-        classrooms = db.query(Classroom).filter(Classroom.id.in_(classroom_ids)).all()
+        c_ids = list(unit_to_classrooms.get(u.id, set()))
+        classrooms = db.query(Classroom).filter(Classroom.id.in_(c_ids)).all() if c_ids else []
         c_names = [c.name for c in classrooms]
         subjects = list(set([c.subject for c in classrooms if c.subject]))
         
@@ -366,7 +379,9 @@ def get_self_paced_topics(db: Session = Depends(get_db), current_student: User =
             "topic": u.title,
             "subject": subjects[0] if subjects else "General",
             "objectives": [{"id": o.id, "text": o.text, "bloom_level": o.bloom_level} for o in objs],
-            "classrooms": c_names
+            "classrooms": c_names,
+            "classroom_id": c_ids[0] if c_ids else None,
+            "classroom_ids": c_ids
         })
     return topics
 
@@ -725,6 +740,93 @@ def evaluate_adaptive_diagnostic(
 
 
 
+@router.post("/proctor/verify-frame")
+def verify_proctor_frame(
+    data: ProctorFrameRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    """
+    Live AI Proctoring: Evaluates video frame using YOLOv8 for person detection.
+    Flags when multiple persons are detected or if no test-taker is present.
+    """
+    return analyze_proctor_frame(data.image_b64)
+
+@router.post("/proctor/void-attempt")
+def void_proctor_attempt(
+    data: VoidAttemptRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(student_required)
+):
+    """
+    When multiple persons detection flag exceeds the allowed limit, this endpoint
+    voids the ongoing attempt so it is NOT considered, restoring the attempt so the student can reattempt.
+    """
+    assignment = db.query(Assignment).filter(Assignment.id == data.assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    classroom_unit_assignments = db.query(Assignment).filter(
+        Assignment.classroom_id == assignment.classroom_id
+    ).all()
+    all_unit_assign_ids = [ca.id for ca in classroom_unit_assignments]
+    
+    deleted_count = db.query(Submission).filter(
+        Submission.student_id == current_student.id,
+        Submission.assignment_id.in_(all_unit_assign_ids),
+        Submission.answers_json == "{}"
+    ).delete(synchronize_session=False)
+    db.commit()
+    
+    return {
+        "message": "Assessment attempt invalidated due to proctoring violation. Not considered; student may reattempt.",
+        "voided": True,
+        "deleted_count": deleted_count
+    }
+
+@router.post("/assignments/start")
+def start_assessment(data: StartAssessmentRequest, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
+    assignment = db.query(Assignment).filter(Assignment.id == data.assignment_id).first()
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    classroom_unit_assignments = db.query(Assignment).filter(
+        Assignment.classroom_id == assignment.classroom_id
+    ).all()
+    all_unit_assign_ids = [ca.id for ca in classroom_unit_assignments]
+    
+    prev_subs = db.query(Submission).filter(
+        Submission.student_id == current_student.id,
+        Submission.assignment_id.in_(all_unit_assign_ids)
+    ).count()
+    
+    max_attempts = assignment.max_attempts or 1
+    if prev_subs >= max_attempts:
+        raise HTTPException(status_code=400, detail="Maximum attempts reached for this assessment.")
+        
+    # Record the attempt as started
+    initial_sub = Submission(
+        student_id=current_student.id,
+        assignment_id=assignment.id,
+        answers_json="{}",
+        score=0.0,
+        objective_breakdown_json="{}"
+    )
+    db.add(initial_sub)
+    db.commit()
+    db.refresh(initial_sub)
+    
+    attempts_used = prev_subs + 1
+    attempts_remaining = max(0, max_attempts - attempts_used)
+    
+    return {
+        "message": "Assessment attempt initiated.",
+        "submission_id": initial_sub.id,
+        "attempts_used": attempts_used,
+        "attempts_remaining": attempts_remaining,
+        "can_attempt": attempts_remaining > 0
+    }
+
 @router.post("/assignments/submit")
 def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_db), current_student: User = Depends(student_required)):
     assignment = db.query(Assignment).filter(Assignment.id == data.assignment_id).first()
@@ -763,12 +865,21 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
                 "content": json.loads(ca_ver.content_json)
             }
             
+    # Check if an in-progress attempt already exists
+    in_progress = db.query(Submission).filter(
+        Submission.student_id == current_student.id,
+        Submission.assignment_id.in_(all_unit_assign_ids),
+        Submission.answers_json == "{}"
+    ).order_by(Submission.submitted_at.desc()).first()
+
     # Check attempts count across the unit assignments
     prev_subs = db.query(Submission).filter(
         Submission.student_id == current_student.id,
         Submission.assignment_id.in_(all_unit_assign_ids)
     ).count()
-    if prev_subs >= (assignment.max_attempts or 1):
+
+    max_att = assignment.max_attempts or 1
+    if not in_progress and prev_subs >= max_att:
         raise HTTPException(status_code=400, detail="Maximum submission attempts reached for this assessment.")
         
     # Auto-score all unit questions against answer keys
@@ -836,16 +947,26 @@ def submit_assessment(data: SubmitAssessmentRequest, db: Session = Depends(get_d
         if stats["total"] > 0:
             objective_breakdown[obj_name] = round((stats["correct"] / stats["total"]) * 100, 1)
             
-    submission = Submission(
-        student_id=current_student.id,
-        assignment_id=assignment.id,
-        answers_json=json.dumps(data.answers),
-        score=mastery_percentage,
-        objective_breakdown_json=json.dumps(objective_breakdown)
-    )
-    db.add(submission)
-    db.commit()
-    db.refresh(submission)
+    if in_progress:
+        in_progress.assignment_id = assignment.id
+        in_progress.answers_json = json.dumps(data.answers)
+        in_progress.score = mastery_percentage
+        in_progress.objective_breakdown_json = json.dumps(objective_breakdown)
+        in_progress.submitted_at = datetime.datetime.utcnow()
+        submission = in_progress
+        db.commit()
+        db.refresh(submission)
+    else:
+        submission = Submission(
+            student_id=current_student.id,
+            assignment_id=assignment.id,
+            answers_json=json.dumps(data.answers),
+            score=mastery_percentage,
+            objective_breakdown_json=json.dumps(objective_breakdown)
+        )
+        db.add(submission)
+        db.commit()
+        db.refresh(submission)
     
     # Mastery / Practice Signal Framing (§7)
     mastery_signal = "Mastery Achieved (Strong Foundation)" if mastery_percentage >= 75 else ("Developing Mastery (Review Concepts)" if mastery_percentage >= 50 else "Novice / Needs Practice")
@@ -1015,6 +1136,8 @@ def get_student_help_requests(
                 "user_name": resp.user.name if resp.user else "Instructor",
                 "user_role": resp.user.role if resp.user else "teacher",
                 "message": resp.message,
+                "file_url": resp.file_url,
+                "file_name": resp.file_name,
                 "created_at": resp.created_at.isoformat()
             } for resp in r.responses]
         })

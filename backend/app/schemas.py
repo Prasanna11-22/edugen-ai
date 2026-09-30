@@ -139,6 +139,17 @@ class UnitAssignToClassroomsRequest(BaseModel):
     max_attempts: Optional[int] = 1
     time_limit_minutes: Optional[int] = 15
 
+class StartAssessmentRequest(BaseModel):
+    assignment_id: int
+
+class ProctorFrameRequest(BaseModel):
+    assignment_id: Optional[int] = None
+    image_b64: str
+
+class VoidAttemptRequest(BaseModel):
+    assignment_id: int
+    reason: Optional[str] = "Proctoring violation: Multiple persons detected"
+
 class SubmitAssessmentRequest(BaseModel):
     assignment_id: int
     answers: Dict[str, Any] # e.g. {"q1": "A", "q2": "..."}
@@ -200,10 +211,16 @@ class StudentRequestCreate(BaseModel):
     details: Optional[str] = None
 
 class StudentRequestStatusUpdate(BaseModel):
-    status: str # open, in_progress, resolved, closed
+    status: str # open, in_progress, resolved, closed, rejected
 
 class StudentRequestResponseCreate(BaseModel):
-    message: str
+    message: Optional[str] = ""
+    file_url: Optional[str] = None
+    file_name: Optional[str] = None
+    status: Optional[str] = None # e.g. resolved, in_progress, rejected
+
+class StudentRequestReject(BaseModel):
+    reason: Optional[str] = "Your request could not be fulfilled at this time."
 
 # OCR & Review-by-Exception Schemas
 class OCRPageResponse(BaseModel):

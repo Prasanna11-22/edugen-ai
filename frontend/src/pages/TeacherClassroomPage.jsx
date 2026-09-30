@@ -5,7 +5,8 @@ import {
   Users, UserPlus, Upload, BarChart3, Target, Award, Key, Copy, Check, 
   RefreshCw, CheckCircle2, ChevronRight, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus,
   AlertTriangle, HelpCircle, MessageSquare, Filter, X, Send,
-  ShieldCheck, Clock, UserCheck, UserX, Trash2
+  ShieldCheck, Clock, UserCheck, UserX, Trash2, Paperclip, FileText, Download, Ban,
+  TrendingUp, ArrowUpDown
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -26,6 +27,10 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
+  // Sorting state for students tables (Default: descending progress)
+  const [enrolledSortBy, setEnrolledSortBy] = useState('progress_desc');
+  const [directorySortBy, setDirectorySortBy] = useState('progress_desc');
+
   // Struggle Signals & Student Requests state
   const [struggleSignals, setStruggleSignals] = useState({ signals: [], general_requests_count: 0, total_active_requests: 0 });
   const [studentRequests, setStudentRequests] = useState([]);
@@ -42,10 +47,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const [newReqDetails, setNewReqDetails] = useState('');
   const [creatingRequest, setCreatingRequest] = useState(false);
 
-  // Quick reply state
+  // Quick reply & rejection state
   const [replyingRequestId, setReplyingRequestId] = useState(null);
   const [replyMessage, setReplyMessage] = useState('');
+  const [replyFile, setReplyFile] = useState(null);
   const [sendingReply, setSendingReply] = useState(false);
+  const [rejectingRequestId, setRejectingRequestId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectingRequest, setRejectingRequest] = useState(false);
 
   // Student creation modal states
   const [showSingleModal, setShowSingleModal] = useState(false);
@@ -57,6 +66,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const [bulkText, setBulkText] = useState('');
   const [bulkCreatedStudents, setBulkCreatedStudents] = useState([]);
   const [modalClassroomId, setModalClassroomId] = useState('');
+  const [isGeneratingBulk, setIsGeneratingBulk] = useState(false);
+  const [isGeneratingSingle, setIsGeneratingSingle] = useState(false);
 
   // Classroom creation modal state
   const [showClassModal, setShowClassModal] = useState(false);
@@ -285,31 +296,86 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
     }
   };
 
-  const handleSendReply = async (reqId) => {
-    if (!replyMessage.trim()) return;
+  const handleSendReply = async (reqId, markResolved = false) => {
+    if (!replyMessage.trim() && !replyFile) {
+      showToast("Please enter a response message or attach a PDF/notes document.", "warning");
+      return;
+    }
     setSendingReply(true);
     try {
-      const res = await fetch(`/api/teacher/student-requests/${reqId}/respond`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: replyMessage.trim() })
-      });
+      let res;
+      if (replyFile) {
+        const formData = new FormData();
+        formData.append('message', replyMessage.trim());
+        formData.append('status', markResolved ? 'resolved' : 'in_progress');
+        formData.append('file', replyFile);
+        res = await fetch(`/api/teacher/student-requests/${reqId}/respond-file`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+      } else {
+        res = await fetch(`/api/teacher/student-requests/${reqId}/respond`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ 
+            message: replyMessage.trim(),
+            status: markResolved ? 'resolved' : 'in_progress'
+          })
+        });
+      }
       if (res.ok) {
-        showToast("Response sent to student!", "success");
+        showToast(markResolved ? "🎉 Response & notes sent! Request marked resolved." : "Response sent to student!", "success");
         setReplyMessage('');
+        setReplyFile(null);
         setReplyingRequestId(null);
         if (selectedClassId) {
           fetchStruggleSignals(selectedClassId);
           fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
         }
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to send response");
       }
     } catch (err) {
       showToast(err.message, "error");
     } finally {
       setSendingReply(false);
+    }
+  };
+
+  const handleRejectRequest = async (reqId) => {
+    setRejectingRequest(true);
+    try {
+      const res = await fetch(`/api/teacher/student-requests/${reqId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ reason: rejectReason.trim() || "Request declined by instructor." })
+      });
+      if (res.ok) {
+        showToast("Request marked as rejected.", "success");
+        setRejectReason('');
+        setRejectingRequestId(null);
+        if (selectedClassId) {
+          fetchStruggleSignals(selectedClassId);
+          fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
+        }
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to decline request");
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    } finally {
+      setRejectingRequest(false);
     }
   };
 
@@ -341,6 +407,9 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           fetchStruggleSignals(selectedClassId);
           fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
         }
+      } else {
+        const errData = await res.json();
+        throw new Error(errData.detail || "Failed to log student help request");
       }
     } catch (err) {
       showToast(err.message, "error");
@@ -403,6 +472,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
   const handleCreateSingleStudent = async (e) => {
     e.preventDefault();
+    setIsGeneratingSingle(true);
     try {
       const res = await fetch('/api/teacher/students/create', {
         method: 'POST',
@@ -411,9 +481,9 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          name: singleName,
-          email: singleEmail,
-          password: singlePassword || undefined,
+          name: singleName.trim(),
+          email: singleEmail.trim(),
+          password: singlePassword.trim() || undefined,
           classroom_id: modalClassroomId ? Number(modalClassroomId) : undefined
         })
       });
@@ -428,11 +498,18 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       if (selectedClassId) await fetchAnalytics(selectedClassId);
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      setIsGeneratingSingle(false);
     }
   };
 
   const handleCreateBulkStudents = async (e) => {
     e.preventDefault();
+    if (!bulkText.trim()) {
+      showToast('Please enter or upload student names and emails.', 'warning');
+      return;
+    }
+    setIsGeneratingBulk(true);
     try {
       const res = await fetch('/api/teacher/students/bulk', {
         method: 'POST',
@@ -447,14 +524,16 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Bulk creation failed');
-      setBulkCreatedStudents(data.students);
+      setBulkCreatedStudents(data.students || []);
       setBulkText('');
       const count = data.created_count ?? data.students?.length ?? 0;
-      showToast(`Successfully created ${count} student accounts!`, "success");
+      showToast(`Successfully generated credentials for ${count} students!`, "success");
       await fetchStudentsDirectory();
       if (selectedClassId) await fetchAnalytics(selectedClassId);
     } catch (err) {
       showToast(err.message, "error");
+    } finally {
+      setIsGeneratingBulk(false);
     }
   };
 
@@ -478,7 +557,93 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
     setTimeout(() => setCopiedKey(''), 2000);
   };
 
+  const exportStudentsCsv = (studentsList, filename = 'retrievo_student_credentials.csv') => {
+    if (!studentsList || studentsList.length === 0) {
+      showToast('No students to export', 'warning');
+      return;
+    }
+    const headers = ['Name', 'Email/Username', 'Password', 'Classrooms', 'Latest Score %', 'Attempts'];
+    const rows = studentsList.map(s => [
+      `"${(s.name || '').replace(/"/g, '""')}"`,
+      `"${(s.email || '').replace(/"/g, '""')}"`,
+      `"${(s.password || '').replace(/"/g, '""')}"`,
+      `"${(s.enrolled_classrooms?.map(c => c.name).join('; ') || '').replace(/"/g, '""')}"`,
+      s.latest_score !== null && s.latest_score !== undefined ? s.latest_score : '',
+      s.attempts_count || 0
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Exported ${studentsList.length} student credentials to CSV!`, 'success');
+  };
+
+  const copyAllCredentialsText = (studentsList) => {
+    if (!studentsList || studentsList.length === 0) {
+      showToast('No credentials to copy', 'warning');
+      return;
+    }
+    const lines = studentsList.map((s, idx) => 
+      `${idx + 1}. Name: ${s.name} | Username: ${s.email} | Password: ${s.password || ''}`
+    );
+    const formatted = `=== RETRIEVO STUDENT CREDENTIALS ===\n\n` + lines.join('\n');
+    copyToClipboard(formatted, 'all_creds');
+    showToast(`Copied ${studentsList.length} student credentials to clipboard!`, 'success');
+  };
+
   const activeClass = classrooms.find(c => c.id === selectedClassId);
+
+  // Sort Enrolled Students (Default: Descending Progress & Assessment Results)
+  const sortedEnrolledStudents = React.useMemo(() => {
+    const list = [...(analytics?.enrolled_students || [])];
+    return list.sort((a, b) => {
+      if (enrolledSortBy === 'progress_desc') {
+        const aCompleted = a.has_completed || (a.attempts_count > 0 && a.latest_score !== null);
+        const bCompleted = b.has_completed || (b.attempts_count > 0 && b.latest_score !== null);
+        if (aCompleted && !bCompleted) return -1;
+        if (!aCompleted && bCompleted) return 1;
+        return (b.progress || b.latest_score || 0) - (a.progress || a.latest_score || 0);
+      }
+      if (enrolledSortBy === 'progress_asc') {
+        return (a.progress || a.latest_score || 0) - (b.progress || b.latest_score || 0);
+      }
+      if (enrolledSortBy === 'name_asc') {
+        return a.name.localeCompare(b.name);
+      }
+      if (enrolledSortBy === 'date_desc') {
+        return new Date(b.joined_at || 0) - new Date(a.joined_at || 0);
+      }
+      return 0;
+    });
+  }, [analytics?.enrolled_students, enrolledSortBy]);
+
+  // Sort All Students in Directory (Default: Descending Progress)
+  const sortedDirectoryStudents = React.useMemo(() => {
+    const list = [...allStudents];
+    return list.sort((a, b) => {
+      if (directorySortBy === 'progress_desc') {
+        const aCompleted = a.has_completed || (a.attempts_count > 0 && a.latest_score !== null);
+        const bCompleted = b.has_completed || (b.attempts_count > 0 && b.latest_score !== null);
+        if (aCompleted && !bCompleted) return -1;
+        if (!aCompleted && bCompleted) return 1;
+        return (b.progress || b.latest_score || 0) - (a.progress || a.latest_score || 0);
+      }
+      if (directorySortBy === 'progress_asc') {
+        return (a.progress || a.latest_score || 0) - (b.progress || b.latest_score || 0);
+      }
+      if (directorySortBy === 'name_asc') {
+        return a.name.localeCompare(b.name);
+      }
+      if (directorySortBy === 'date_desc') {
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+      }
+      return 0;
+    });
+  }, [allStudents, directorySortBy]);
 
   return (
     <div className="space-y-8 pb-16">
@@ -562,15 +727,60 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           <GlassCard
             icon={Users}
             title="Teacher Student Credentials Directory"
-            subtitle="All student accounts created by you. Students can join any classroom using the classroom unique join code."
+            subtitle="All student accounts created by you, ranked in descending order of assessment progress"
             accent={true}
             action={
-              <Badge variant="royal">{allStudents.length} Students in PostgreSQL</Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-[11px] font-mono bg-dark-950 px-2.5 py-1 rounded-xl border border-slate-800 text-slate-300">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Sort:</span>
+                  <select
+                    value={directorySortBy}
+                    onChange={(e) => setDirectorySortBy(e.target.value)}
+                    className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value="progress_desc" className="bg-dark-900 text-white">Highest Progress ⬇️</option>
+                    <option value="progress_asc" className="bg-dark-900 text-white">Lowest Progress ⬆️</option>
+                    <option value="name_asc" className="bg-dark-900 text-white">Name (A-Z)</option>
+                    <option value="date_desc" className="bg-dark-900 text-white">Newest First</option>
+                  </select>
+                </div>
+                {allStudents.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => copyAllCredentialsText(allStudents)}
+                      className="px-2.5 py-1 rounded-xl bg-dark-950 hover:bg-dark-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+                      title="Copy All Student Usernames & Passwords"
+                    >
+                      {copiedKey === 'all_creds' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied All!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                          <span>Copy All Logins</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => exportStudentsCsv(allStudents)}
+                      className="px-2.5 py-1 rounded-xl bg-dark-950 hover:bg-dark-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-[11px] font-mono flex items-center gap-1.5 transition-colors"
+                      title="Export Student Directory to CSV"
+                    >
+                      <Download className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Export CSV</span>
+                    </button>
+                  </>
+                )}
+                <Badge variant="royal">{allStudents.length} Students</Badge>
+              </div>
             }
           >
             {loadingStudents ? (
               <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Fetching student records from PostgreSQL...
+                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Fetching student records...
               </div>
             ) : allStudents.length === 0 ? (
               <div className="text-center py-12 space-y-4">
@@ -580,18 +790,18 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                 <div>
                   <h4 className="text-sm font-semibold text-white">No Student Credentials Issued Yet</h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
-                    Create student credentials individually or paste a bulk list. Accounts are stored directly in PostgreSQL.
+                    Create student credentials individually or paste a bulk list.
                   </p>
                 </div>
                 <div className="flex items-center justify-center gap-2 pt-2">
                   <button
-                    onClick={() => setShowSingleModal(true)}
+                    onClick={() => { setCreatedStudent(null); setShowSingleModal(true); }}
                     className="btn-royal text-xs py-2 px-4"
                   >
                     + Create Single Student
                   </button>
                   <button
-                    onClick={() => setShowBulkModal(true)}
+                    onClick={() => { setBulkCreatedStudents([]); setShowBulkModal(true); }}
                     className="btn-royal-outline text-xs py-2 px-4"
                   >
                     + Bulk CSV Upload
@@ -603,60 +813,131 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+                      <th className="pb-3 font-semibold w-12 text-center">Rank</th>
                       <th className="pb-3 font-semibold">Student Name</th>
                       <th className="pb-3 font-semibold">Username / Email</th>
                       <th className="pb-3 font-semibold text-neon-orange">Password</th>
-                      <th className="pb-3 font-semibold">Created Date</th>
                       <th className="pb-3 font-semibold">Enrolled Classrooms</th>
+                      <th className="pb-3 font-semibold text-sky-400 min-w-[200px]">Student Progress</th>
                       <th className="pb-3 font-semibold text-right">Credentials Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {allStudents.map((st) => (
-                      <tr key={st.id} className="hover:bg-dark-900/40 transition-colors">
-                        <td className="py-3.5 font-semibold text-white">{st.name}</td>
-                        <td className="py-3.5 font-mono text-slate-300">{st.email}</td>
-                        <td className="py-3.5 font-mono">
-                          <span className="font-mono text-xs font-bold text-neon-amber px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
-                            <Key className="w-3 h-3 text-neon-orange" />
-                            {st.password || 'student123'}
-                          </span>
-                        </td>
-                        <td className="py-3.5 text-slate-400 font-mono text-[11px]">
-                          {new Date(st.created_at).toLocaleDateString()}
-                        </td>
-                        <td className="py-3.5">
-                          {st.enrolled_classrooms && st.enrolled_classrooms.length > 0 ? (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {st.enrolled_classrooms.map((c) => (
-                                <Badge key={c.classroom_id} variant="approved">
-                                  {c.name} {c.subject ? `(${c.subject})` : ''}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-[11px] text-slate-500 italic">Not joined to any class yet</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 text-right">
-                          <button
-                            onClick={() => copyToClipboard(`Username: ${st.email} | Password: ${st.password || 'student123'}`, `usr_${st.id}`)}
-                            className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 border border-slate-700 hover:border-neon-orange text-[11px] text-slate-200 hover:text-white font-mono transition-all inline-flex items-center gap-1.5 shadow-sm"
-                            title="Copy Username and Password"
-                          >
-                            {copiedKey === `usr_${st.id}` ? (
-                              <>
-                                <Check className="w-3 h-3 text-emerald-400" /> Copied Login!
-                              </>
+                    {sortedDirectoryStudents.map((st, idx) => {
+                      const hasResult = st.latest_score !== null && st.latest_score !== undefined;
+                      return (
+                        <tr key={st.id} className="hover:bg-dark-900/40 transition-colors">
+                          <td className="py-3.5 font-mono text-center">
+                            {idx === 0 && hasResult ? (
+                              <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-300 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 1">
+                                🥇
+                              </span>
+                            ) : idx === 1 && hasResult ? (
+                              <span className="w-6 h-6 rounded-lg bg-slate-300/20 border border-slate-300/50 text-slate-200 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 2">
+                                🥈
+                              </span>
+                            ) : idx === 2 && hasResult ? (
+                              <span className="w-6 h-6 rounded-lg bg-amber-700/20 border border-amber-600/50 text-amber-400 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 3">
+                                🥉
+                              </span>
                             ) : (
-                              <>
-                                <Copy className="w-3 h-3 text-neon-orange" /> Copy Login
-                              </>
+                              <span className="w-6 h-6 rounded-lg bg-dark-950 border border-slate-800 text-slate-400 inline-flex items-center justify-center text-[11px]">
+                                #{idx + 1}
+                              </span>
                             )}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="py-3.5 font-semibold text-white">{st.name}</td>
+                          <td className="py-3.5 font-mono text-slate-300">{st.email}</td>
+                          <td className="py-3.5 font-mono">
+                            <span className="font-mono text-xs font-bold text-neon-amber px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                              <Key className="w-3 h-3 text-neon-orange" />
+                              {st.password || '••••••••'}
+                            </span>
+                          </td>
+                          <td className="py-3.5">
+                            {st.enrolled_classrooms && st.enrolled_classrooms.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {st.enrolled_classrooms.map((c) => (
+                                  <Badge key={c.classroom_id} variant="approved">
+                                    {c.name} {c.subject ? `(${c.subject})` : ''}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-500 italic">Not joined to any class yet</span>
+                            )}
+                          </td>
+                          <td className="py-3.5">
+                            {hasResult ? (
+                              <div className="space-y-1.5 min-w-[190px]">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-mono font-black text-white flex items-center gap-1.5">
+                                    {st.latest_score >= 75 ? (
+                                      <span className="text-emerald-400 font-bold">🏆 {st.latest_score}%</span>
+                                    ) : st.latest_score >= 50 ? (
+                                      <span className="text-neon-amber font-bold">⚡ {st.latest_score}%</span>
+                                    ) : (
+                                      <span className="text-rose-400 font-bold">🌱 {st.latest_score}%</span>
+                                    )}
+                                  </span>
+                                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                    st.latest_score >= 75
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : st.latest_score >= 50
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                                  }`}>
+                                    {st.mastery_signal || (st.latest_score >= 75 ? 'Mastery' : st.latest_score >= 50 ? 'Developing' : 'Needs Practice')}
+                                  </span>
+                                </div>
+                                <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${
+                                      st.latest_score >= 75
+                                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                                        : st.latest_score >= 50
+                                          ? 'bg-gradient-to-r from-neon-orange to-neon-amber shadow-[0_0_10px_rgba(255,107,0,0.5)]'
+                                          : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.5)]'
+                                    }`}
+                                    style={{ width: `${Math.min(100, Math.max(5, st.latest_score))}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 block">
+                                  {st.attempts_count} Completed Assessment(s)
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="space-y-1 min-w-[150px]">
+                                <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                                  <span>0% Progress</span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded bg-dark-950 text-slate-500 border border-slate-800">Pending</span>
+                                </div>
+                                <div className="w-full h-1.5 rounded-full bg-dark-950 border border-slate-800/80">
+                                  <div className="h-full rounded-full bg-slate-700/30" style={{ width: '0%' }} />
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3.5 text-right">
+                            <button
+                              onClick={() => copyToClipboard(`Username: ${st.email} | Password: ${st.password || ''}`, `usr_${st.id}`)}
+                              className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 border border-slate-700 hover:border-neon-orange text-[11px] text-slate-200 hover:text-white font-mono transition-all inline-flex items-center gap-1.5 shadow-sm"
+                              title="Copy Username and Password"
+                            >
+                              {copiedKey === `usr_${st.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" /> Copied Login!
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3 text-neon-orange" /> Copy Login
+                                </>
+                              )}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -929,7 +1210,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                    <div className="space-y-3">
                     {studentRequests.map((req) => (
                       <div
                         key={req.id}
@@ -939,8 +1220,16 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-xs text-white">{req.student_name}</span>
                             <span className="text-[11px] font-mono text-slate-400">({req.student_email})</span>
-                            <Badge variant={req.status === 'resolved' ? 'approved' : (req.status === 'in_progress' ? 'warning' : 'royal')}>
-                              {req.status === 'in_progress' ? 'In Progress' : req.status.toUpperCase()}
+                            <Badge variant={
+                              req.status === 'resolved' 
+                                ? 'approved' 
+                                : req.status === 'in_progress' 
+                                ? 'warning' 
+                                : req.status === 'rejected' 
+                                ? 'error' 
+                                : 'royal'
+                            }>
+                              {req.status === 'in_progress' ? 'In Progress' : req.status === 'rejected' ? 'REJECTED' : req.status.toUpperCase()}
                             </Badge>
                           </div>
                           <span className="text-[10px] font-mono text-slate-500">
@@ -964,14 +1253,28 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         {req.responses && req.responses.length > 0 && (
                           <div className="space-y-2 pt-2 border-t border-slate-800/60 pl-3 border-l-2 border-neon-orange/40">
                             {req.responses.map(resp => (
-                              <div key={resp.id} className="text-xs space-y-0.5">
-                                <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                              <div key={resp.id} className="text-xs space-y-1.5 bg-dark-950 p-2.5 rounded-lg border border-slate-800">
+                                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
                                   <span className="font-bold text-neon-orange">{resp.user_name} ({resp.user_role}):</span>
                                   <span>{new Date(resp.created_at).toLocaleTimeString()}</span>
                                 </div>
-                                <p className="text-slate-300 bg-dark-950 p-2 rounded-lg border border-slate-800 text-[11px]">
-                                  {resp.message}
-                                </p>
+                                {resp.message && (
+                                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                                    {resp.message}
+                                  </p>
+                                )}
+                                {resp.file_url && (
+                                  <a
+                                    href={resp.file_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-slate-700 hover:border-neon-orange text-neon-orange hover:text-neon-amber transition text-xs font-mono group"
+                                  >
+                                    <FileText className="w-3.5 h-3.5 text-neon-orange" />
+                                    <span className="font-semibold underline decoration-dotted">{resp.file_name || 'Download Attached PDF / Notes'}</span>
+                                    <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-neon-orange transition" />
+                                  </a>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -979,8 +1282,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
                         {/* Quick Actions & Reply Box */}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/60">
-                          <div className="flex items-center gap-1.5">
-                            {req.status !== 'in_progress' && req.status !== 'resolved' && (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {req.status !== 'in_progress' && req.status !== 'resolved' && req.status !== 'rejected' && (
                               <button
                                 onClick={() => handleUpdateRequestStatus(req.id, 'in_progress')}
                                 className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-neon-amber border border-slate-800 text-[11px] font-semibold transition"
@@ -988,7 +1291,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 Mark In Progress
                               </button>
                             )}
-                            {req.status !== 'resolved' && (
+                            {req.status !== 'resolved' && req.status !== 'rejected' && (
                               <button
                                 onClick={() => handleUpdateRequestStatus(req.id, 'resolved')}
                                 className="px-2.5 py-1 rounded-lg bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-500/40 text-[11px] font-semibold transition flex items-center gap-1"
@@ -996,7 +1299,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 <Check className="w-3 h-3" /> Mark Resolved
                               </button>
                             )}
-                            {req.status === 'resolved' && (
+                            {(req.status === 'resolved' || req.status === 'rejected') && (
                               <button
                                 onClick={() => handleUpdateRequestStatus(req.id, 'open')}
                                 className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-slate-400 text-[11px] font-semibold transition"
@@ -1004,34 +1307,123 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 Reopen
                               </button>
                             )}
+                            {req.status !== 'rejected' && req.status !== 'resolved' && (
+                              <button
+                                onClick={() => {
+                                  setRejectingRequestId(rejectingRequestId === req.id ? null : req.id);
+                                  setReplyingRequestId(null);
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/40 text-rose-400 border border-rose-500/30 text-[11px] font-semibold flex items-center gap-1 transition"
+                              >
+                                <Ban className="w-3 h-3" /> Reject
+                              </button>
+                            )}
                           </div>
 
                           <button
-                            onClick={() => setReplyingRequestId(replyingRequestId === req.id ? null : req.id)}
-                            className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-sky-400 border border-slate-700 text-[11px] font-semibold flex items-center gap-1"
+                            onClick={() => {
+                              setReplyingRequestId(replyingRequestId === req.id ? null : req.id);
+                              setRejectingRequestId(null);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-sky-400 border border-slate-700 text-[11px] font-semibold flex items-center gap-1 transition"
                           >
-                            <MessageSquare className="w-3 h-3" /> {replyingRequestId === req.id ? 'Cancel Reply' : 'Reply'}
+                            <MessageSquare className="w-3 h-3" /> {replyingRequestId === req.id ? 'Cancel Reply' : 'Reply (Text / PDF)'}
                           </button>
                         </div>
 
-                        {/* Inline Reply Input */}
-                        {replyingRequestId === req.id && (
-                          <div className="pt-2 animate-in fade-in flex items-center gap-2">
+                        {/* Inline Rejection Box */}
+                        {rejectingRequestId === req.id && (
+                          <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 space-y-2 animate-in fade-in">
+                            <div className="flex items-center gap-1.5 text-xs text-rose-400 font-semibold">
+                              <Ban className="w-3.5 h-3.5" /> Decline Course Notes Request
+                            </div>
                             <input
                               type="text"
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Reason for declining (e.g. Please refer to Unit 2 Lecture Slide 14)..."
+                              className="w-full rounded-xl glass-input p-2 text-xs"
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleRejectRequest(req.id); }}
+                            />
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              <button
+                                onClick={() => setRejectingRequestId(null)}
+                                className="px-3 py-1 rounded-lg text-xs bg-dark-800 text-slate-400 hover:text-white"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleRejectRequest(req.id)}
+                                disabled={rejectingRequest}
+                                className="px-3 py-1 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white flex items-center gap-1"
+                              >
+                                <Ban className="w-3 h-3" /> Confirm Decline
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Inline Reply Input with PDF attachment support */}
+                        {replyingRequestId === req.id && (
+                          <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-3 animate-in fade-in">
+                            <textarea
+                              rows={2}
                               value={replyMessage}
                               onChange={(e) => setReplyMessage(e.target.value)}
-                              placeholder="Type response to student..."
-                              className="flex-1 rounded-xl glass-input p-2 text-xs"
-                              onKeyDown={(e) => { if (e.key === 'Enter') handleSendReply(req.id); }}
+                              placeholder="Type response notes, explanations, or solution summary for the student..."
+                              className="w-full rounded-xl glass-input p-2.5 text-xs resize-none"
                             />
-                            <button
-                              onClick={() => handleSendReply(req.id)}
-                              disabled={sendingReply || !replyMessage.trim()}
-                              className="btn-royal text-xs py-2 px-3 flex items-center gap-1 shrink-0"
-                            >
-                              <Send className="w-3.5 h-3.5" /> Send
-                            </button>
+
+                            {/* File Upload / Attachment Picker */}
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <label className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                                  <Paperclip className="w-3.5 h-3.5 text-neon-orange" />
+                                  <span>{replyFile ? 'Change File' : 'Attach PDF / Document'}</span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.txt"
+                                    onChange={(e) => {
+                                      if (e.target.files && e.target.files[0]) {
+                                        setReplyFile(e.target.files[0]);
+                                      }
+                                    }}
+                                  />
+                                </label>
+
+                                {replyFile && (
+                                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-dark-900 border border-neon-orange/40 text-neon-orange text-[11px] font-mono">
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span className="max-w-[180px] truncate">{replyFile.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReplyFile(null)}
+                                      className="ml-1 text-slate-400 hover:text-rose-400"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleSendReply(req.id, false)}
+                                  disabled={sendingReply || (!replyMessage.trim() && !replyFile)}
+                                  className="px-3 py-1.5 rounded-lg bg-dark-850 hover:bg-dark-800 text-sky-300 border border-slate-700 text-xs font-semibold flex items-center gap-1 transition disabled:opacity-50"
+                                >
+                                  <Send className="w-3 h-3" /> Send (Keep Open)
+                                </button>
+                                <button
+                                  onClick={() => handleSendReply(req.id, true)}
+                                  disabled={sendingReply || (!replyMessage.trim() && !replyFile)}
+                                  className="btn-royal text-xs py-1.5 px-3 flex items-center gap-1 shrink-0 disabled:opacity-50"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Send & Resolve
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1049,7 +1441,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               >
                 {loadingAnalytics ? (
                   <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Computing objective alignment metrics from PostgreSQL...
+                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Computing objective alignment metrics...
                   </div>
                 ) : !analytics?.objective_alignment_map || analytics.objective_alignment_map.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-500">
@@ -1090,9 +1482,28 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               <GlassCard
                 icon={Users}
                 title={`Students Enrolled in ${activeClass?.name}${activeClass?.subject ? ` (${activeClass.subject})` : ''}`}
-                subtitle="Students who have joined this classroom using the unique join code or direct enrollment"
+                subtitle="Students enrolled in this classroom, ranked in descending order of assessment progress & score results"
+                action={
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <div className="flex items-center gap-1.5 text-[11px] font-mono bg-dark-950 px-2.5 py-1 rounded-xl border border-slate-800 text-slate-300">
+                      <ArrowUpDown className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Sort:</span>
+                      <select
+                        value={enrolledSortBy}
+                        onChange={(e) => setEnrolledSortBy(e.target.value)}
+                        className="bg-transparent text-white font-bold focus:outline-none cursor-pointer"
+                      >
+                        <option value="progress_desc" className="bg-dark-900 text-white">Highest Progress ⬇️</option>
+                        <option value="progress_asc" className="bg-dark-900 text-white">Lowest Progress ⬆️</option>
+                        <option value="name_asc" className="bg-dark-900 text-white">Name (A-Z)</option>
+                        <option value="date_desc" className="bg-dark-900 text-white">Newest Joined</option>
+                      </select>
+                    </div>
+                    <Badge variant="royal">{sortedEnrolledStudents.length} Students</Badge>
+                  </div>
+                }
               >
-                {!analytics?.enrolled_students || analytics.enrolled_students.length === 0 ? (
+                {!sortedEnrolledStudents || sortedEnrolledStudents.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-500">
                     No students have joined this classroom yet. Share Join Code: <b className="text-neon-amber font-mono">{activeClass?.join_code}</b>
                   </div>
@@ -1101,38 +1512,119 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+                          <th className="pb-3 font-semibold w-12 text-center">Rank</th>
                           <th className="pb-3 font-semibold">Student Name</th>
-                          <th className="pb-3 font-semibold">Username</th>
+                          <th className="pb-3 font-semibold">Username / Email</th>
                           <th className="pb-3 font-semibold text-neon-orange">Password</th>
-                          <th className="pb-3 font-semibold">Assessments Taken</th>
-                          <th className="pb-3 font-semibold">Latest Mastery</th>
+                          <th className="pb-3 font-semibold">Assessments Completed</th>
+                          <th className="pb-3 font-semibold text-sky-400 min-w-[220px]">Student Progress</th>
                           <th className="pb-3 font-semibold text-right">Joined Date</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
-                        {analytics.enrolled_students.map((st) => (
-                          <tr key={st.id} className="hover:bg-dark-900/40">
-                            <td className="py-3 font-semibold text-white">{st.name}</td>
-                            <td className="py-3 font-mono text-slate-300">{st.email}</td>
-                            <td className="py-3 font-mono">
-                              <span className="font-mono text-xs font-bold text-neon-amber px-2 py-0.5 rounded bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
-                                <Key className="w-3 h-3 text-neon-orange" />
-                                {st.password || 'student123'}
-                              </span>
-                            </td>
-                            <td className="py-3">
-                              <Badge variant={st.attempts_count > 0 ? 'approved' : 'default'}>
-                                {st.attempts_count} Attempt(s)
-                              </Badge>
-                            </td>
-                            <td className="py-3 font-mono font-bold text-neon-orange">
-                              {st.latest_score !== null ? `${st.latest_score}%` : 'Pending'}
-                            </td>
-                            <td className="py-3 text-right font-mono text-slate-400 text-[11px]">
-                              {new Date(st.joined_at).toLocaleDateString()}
-                            </td>
-                          </tr>
-                        ))}
+                        {sortedEnrolledStudents.map((st, idx) => {
+                          const hasResult = st.latest_score !== null && st.latest_score !== undefined;
+                          return (
+                            <tr key={st.id} className="hover:bg-dark-900/40 transition-colors">
+                              <td className="py-3.5 font-mono text-center">
+                                {idx === 0 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-300 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 1">
+                                    🥇
+                                  </span>
+                                ) : idx === 1 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-slate-300/20 border border-slate-300/50 text-slate-200 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 2">
+                                    🥈
+                                  </span>
+                                ) : idx === 2 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-amber-700/20 border border-amber-600/50 text-amber-400 inline-flex items-center justify-center text-xs shadow-sm" title="Rank 3">
+                                    🥉
+                                  </span>
+                                ) : (
+                                  <span className="w-6 h-6 rounded-lg bg-dark-950 border border-slate-800 text-slate-400 inline-flex items-center justify-center text-[11px]">
+                                    #{idx + 1}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 font-semibold text-white">{st.name}</td>
+                              <td className="py-3.5 font-mono text-slate-300">{st.email}</td>
+                              <td className="py-3.5 font-mono">
+                                <span className="font-mono text-xs font-bold text-neon-amber px-2 py-0.5 rounded bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                                  <Key className="w-3 h-3 text-neon-orange" />
+                                  {st.password || '••••••••'}
+                                </span>
+                              </td>
+                              <td className="py-3.5">
+                                <Badge variant={st.attempts_count > 0 ? 'approved' : 'default'}>
+                                  {st.attempts_count} Completed
+                                </Badge>
+                              </td>
+                              <td className="py-3.5">
+                                {hasResult ? (
+                                  <div className="space-y-1.5 min-w-[210px]">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="font-mono font-black text-white flex items-center gap-1.5">
+                                        {st.latest_score >= 75 ? (
+                                          <span className="text-emerald-400 font-bold">🏆 {st.latest_score}%</span>
+                                        ) : st.latest_score >= 50 ? (
+                                          <span className="text-neon-amber font-bold">⚡ {st.latest_score}%</span>
+                                        ) : (
+                                          <span className="text-rose-400 font-bold">🌱 {st.latest_score}%</span>
+                                        )}
+                                      </span>
+                                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                        st.latest_score >= 75
+                                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                          : st.latest_score >= 50
+                                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                                      }`}>
+                                        {st.mastery_signal || (st.latest_score >= 75 ? 'Mastery' : st.latest_score >= 50 ? 'Developing' : 'Needs Practice')}
+                                      </span>
+                                    </div>
+                                    
+                                    {/* Visual Animated Progress Bar */}
+                                    <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
+                                      <div
+                                        className={`h-full rounded-full transition-all duration-500 ${
+                                          st.latest_score >= 75
+                                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
+                                            : st.latest_score >= 50
+                                              ? 'bg-gradient-to-r from-neon-orange to-neon-amber shadow-[0_0_10px_rgba(255,107,0,0.5)]'
+                                              : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.5)]'
+                                        }`}
+                                        style={{ width: `${Math.min(100, Math.max(5, st.latest_score))}%` }}
+                                      />
+                                    </div>
+
+                                    {st.latest_unit_title && (
+                                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                                        <span className="truncate max-w-[150px]" title={st.latest_unit_title}>
+                                          {st.latest_unit_title}
+                                        </span>
+                                        {st.average_score && st.attempts_count > 1 && (
+                                          <span className="text-slate-500">Avg: {st.average_score}%</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="space-y-1 min-w-[150px]">
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                                      <span>0% Progress</span>
+                                      <span className="text-[10px] px-2 py-0.5 rounded bg-dark-950 text-slate-500 border border-slate-800">Pending</span>
+                                    </div>
+                                    <div className="w-full h-1.5 rounded-full bg-dark-950 border border-slate-800/80">
+                                      <div className="h-full rounded-full bg-slate-700/30" style={{ width: '0%' }} />
+                                    </div>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3.5 text-right font-mono text-slate-400 text-[11px]">
+                                {st.joined_at ? new Date(st.joined_at).toLocaleDateString() : 'Active'}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1314,7 +1806,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               <UserPlus className="w-5 h-5 text-neon-orange" /> Create Student Account
             </h3>
             <p className="text-xs text-slate-300 mb-4">
-              Student credentials will be created immediately in PostgreSQL.
+              Student credentials will be created immediately with unique login keys.
             </p>
 
             {createdStudent ? (
@@ -1405,9 +1897,17 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                   </button>
                   <button
                     type="submit"
-                    className="btn-royal text-xs py-2 px-4"
+                    disabled={isGeneratingSingle}
+                    className="btn-royal text-xs py-2 px-4 flex items-center gap-1.5"
                   >
-                    Generate Credentials
+                    {isGeneratingSingle ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      'Generate Credentials'
+                    )}
                   </button>
                 </div>
               </form>
@@ -1419,29 +1919,103 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* BULK STUDENT CREATION MODAL */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-lg rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
-            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <Upload className="w-5 h-5 text-neon-orange" /> Bulk Student Account Generator
-            </h3>
+          <div className="w-full max-w-xl rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Upload className="w-5 h-5 text-neon-orange" /> Bulk Student Account Generator
+              </h3>
+              <button
+                onClick={() => { setBulkCreatedStudents([]); setShowBulkModal(false); }}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
             <p className="text-xs text-slate-300 mb-4">
-              Paste names and emails (one per line: <code>Name, email</code>). System-generated credentials will be created immediately in PostgreSQL.
+              Paste names and emails (one per line: <code>Name, email</code>). System-generated unique credentials will be created immediately.
             </p>
 
             {bulkCreatedStudents.length > 0 ? (
-              <div className="space-y-3">
-                <Badge variant="approved">Created {bulkCreatedStudents.length} Student Credentials</Badge>
-                <div className="max-h-60 overflow-y-auto space-y-2 p-2 rounded-xl bg-dark-950 border border-slate-800">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <Badge variant="approved">
+                    <CheckCircle2 className="w-3.5 h-3.5 inline mr-1" />
+                    Generated {bulkCreatedStudents.length} Student Credentials
+                  </Badge>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyAllCredentialsText(bulkCreatedStudents)}
+                      className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-800 border border-slate-700 text-slate-200 text-xs font-mono flex items-center gap-1.5 transition-colors"
+                      title="Copy all credentials to clipboard"
+                    >
+                      {copiedKey === 'all_creds' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied All!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                          <span>Copy All</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportStudentsCsv(bulkCreatedStudents, 'retrievo_bulk_credentials.csv')}
+                      className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-800 border border-slate-700 text-slate-200 text-xs font-mono flex items-center gap-1.5 transition-colors"
+                      title="Download CSV"
+                    >
+                      <Download className="w-3.5 h-3.5 text-sky-400" />
+                      <span>Export CSV</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto space-y-2 p-2.5 rounded-xl bg-dark-950 border border-slate-800">
                   {bulkCreatedStudents.map((st, i) => (
-                    <div key={i} className="p-2 rounded bg-dark-900 text-xs font-mono flex items-center justify-between text-slate-300">
-                      <span>{st.name} ({st.email})</span>
-                      <span className="text-neon-amber font-bold">{st.password}</span>
+                    <div key={i} className="p-2.5 rounded-xl bg-dark-900/90 border border-slate-800/80 text-xs flex items-center justify-between gap-2 text-slate-300 hover:border-slate-700 transition-colors">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-white truncate">{st.name}</div>
+                        <div className="font-mono text-[11px] text-slate-400 truncate">{st.email}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-neon-amber px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                          <Key className="w-3 h-3 text-neon-orange" />
+                          {st.password}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(`Username: ${st.email} | Password: ${st.password}`, `bulk_${i}`)}
+                          className="p-1.5 rounded-lg bg-dark-850 hover:bg-dark-800 border border-slate-700 text-slate-300 hover:text-white"
+                          title="Copy student login"
+                        >
+                          {copiedKey === `bulk_${i}` ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
+
                 <div className="flex items-center gap-2 pt-2">
                   <button
+                    type="button"
+                    onClick={() => { setBulkCreatedStudents([]); setBulkText(''); }}
+                    className="flex-1 btn-royal-outline text-xs py-2"
+                  >
+                    + Generate More Accounts
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => { setBulkCreatedStudents([]); setShowBulkModal(false); }}
-                    className="w-full btn-royal text-xs py-2"
+                    className="flex-1 btn-royal text-xs py-2"
                   >
                     View in Student Directory
                   </button>
@@ -1451,7 +2025,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               <form onSubmit={handleCreateBulkStudents} className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-xs font-semibold text-slate-300">Names & Emails</label>
+                    <label className="text-xs font-semibold text-slate-300">Names & Emails (One per line)</label>
                     <label className="cursor-pointer text-[11px] text-neon-orange hover:text-neon-orange/80 flex items-center gap-1 font-semibold transition-colors">
                       <Upload className="w-3.5 h-3.5" /> Upload .csv file
                       <input
@@ -1465,11 +2039,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                   <textarea
                     value={bulkText}
                     onChange={(e) => setBulkText(e.target.value)}
-                    placeholder={`Ananya Sen, ananya@school.edu\nDev Kumar, dev@school.edu\nMeera Nair, meera@school.edu`}
+                    placeholder={`Ananya Sen, ananya@school.edu\nDev Kumar, dev@school.edu\nMeera Nair, meera@school.edu\nRohan Sharma, rohan.sharma@school.edu`}
                     rows={6}
                     required
-                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none"
+                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none focus:border-neon-orange"
                   />
+                  <span className="text-[11px] text-slate-400 block mt-1">
+                    Accepts comma separated, tab-separated, or CSV files. Auto-generates unique password per student.
+                  </span>
                 </div>
 
                 {classrooms.length > 0 && (
@@ -1492,15 +2069,23 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                   <button
                     type="button"
                     onClick={() => setShowBulkModal(false)}
-                    className="px-4 py-2 rounded-xl text-xs bg-dark-800 text-slate-300"
+                    className="px-4 py-2 rounded-xl text-xs bg-dark-800 text-slate-300 hover:bg-dark-700"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="btn-royal text-xs py-2 px-4"
+                    disabled={isGeneratingBulk}
+                    className="btn-royal text-xs py-2 px-4 flex items-center gap-1.5"
                   >
-                    Bulk Generate Credentials
+                    {isGeneratingBulk ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Generating Accounts...
+                      </>
+                    ) : (
+                      'Bulk Generate Credentials'
+                    )}
                   </button>
                 </div>
               </form>

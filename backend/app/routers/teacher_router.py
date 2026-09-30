@@ -21,6 +21,7 @@ from ..schemas import (
     AssignmentCreate, GlossaryTermUpdate, UnitAssignToClassroomsRequest,
     QuizItemSelectiveRegenRequest, QuizItemStatusUpdate, QuizItemEditRequest,
     StudentRequestCreate, StudentRequestStatusUpdate, StudentRequestResponseCreate,
+    StudentRequestReject,
     ObjectiveValidationRequest, OCRCorrectionValidationRequest,
     GlossaryTermValidationRequest, AssetEditValidationRequest,
     ValidationFlagResolutionRequest, ObjectiveCoverageCheckRequest
@@ -241,10 +242,17 @@ def create_student_account(data: StudentCreate, db: Session = Depends(get_db), c
         "message": "Student created successfully. Credentials generated."
     }
 
+def generate_unique_student_password() -> str:
+    """Generate a clean, secure, unique password for student accounts."""
+    chars = string.ascii_uppercase + string.digits
+    token = ''.join(secrets.choice(chars) for _ in range(6))
+    return f"LF-{token}"
+
 @router.get("/students")
 def get_teacher_students(db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
     """
-    Retrieves all student accounts created by the teacher OR enrolled in teacher's classrooms.
+    Retrieves all student accounts created by the teacher OR enrolled in teacher's classrooms,
+    with their assessment progress arranged in descending order.
     """
     teacher_classrooms = db.query(Classroom).filter(Classroom.teacher_id == current_teacher.id).all()
     teacher_class_ids = [c.id for c in teacher_classrooms]
@@ -257,10 +265,20 @@ def get_teacher_students(db: Session = Depends(get_db), current_teacher: User = 
     students = db.query(User).filter(
         User.role == "student",
         or_(User.created_by == current_teacher.id, User.id.in_(enrolled_student_ids))
-    ).order_by(User.id.desc()).all()
+    ).all()
+    
+    teacher_assign_ids = [a.id for a in db.query(Assignment.id).filter(Assignment.classroom_id.in_(teacher_class_ids)).all()] if teacher_class_ids else []
     
     res = []
+    needs_commit = False
     for s in students:
+        # Guarantee every student has a unique plain password in DB
+        if not s.plain_password:
+            unique_pwd = generate_unique_student_password()
+            s.plain_password = unique_pwd
+            s.password_hash = get_password_hash(unique_pwd)
+            needs_commit = True
+
         enrollments = db.query(Enrollment).filter(Enrollment.student_id == s.id).all()
         enrolled_classes = []
         for enr in enrollments:
@@ -273,14 +291,49 @@ def get_teacher_students(db: Session = Depends(get_db), current_teacher: User = 
                     "join_code": c.join_code,
                     "status": enr.status or "approved"
                 })
+                
+        # Completed submissions for this student across teacher's classrooms
+        completed_subs = db.query(Submission).filter(
+            Submission.student_id == s.id,
+            Submission.assignment_id.in_(teacher_assign_ids),
+            Submission.answers_json != "{}"
+        ).order_by(Submission.submitted_at.desc()).all() if teacher_assign_ids else []
+        
+        latest_sub = completed_subs[0] if completed_subs else None
+        latest_score = latest_sub.score if latest_sub else None
+        avg_score = round(sum(sub.score for sub in completed_subs) / len(completed_subs), 1) if completed_subs else None
+        progress_val = float(latest_score) if latest_score is not None else 0.0
+        
+        mastery_signal = "Not Attempted"
+        if latest_score is not None:
+            if latest_score >= 75:
+                mastery_signal = "Mastery Achieved"
+            elif latest_score >= 50:
+                mastery_signal = "Developing"
+            else:
+                mastery_signal = "Needs Practice"
+                
         res.append({
             "id": s.id,
             "name": s.name,
             "email": s.email,
-            "password": s.plain_password or "student123",
+            "password": s.plain_password,
             "created_at": s.created_at,
-            "enrolled_classrooms": enrolled_classes
+            "enrolled_classrooms": enrolled_classes,
+            "attempts_count": len(completed_subs),
+            "latest_score": latest_score,
+            "average_score": avg_score,
+            "progress": progress_val,
+            "mastery_signal": mastery_signal,
+            "has_completed": len(completed_subs) > 0,
+            "latest_submitted_at": latest_sub.submitted_at.isoformat() if (latest_sub and latest_sub.submitted_at) else None
         })
+        
+    if needs_commit:
+        db.commit()
+
+    # Sort in descending order of progress / assessment result
+    res.sort(key=lambda x: (1 if x["has_completed"] else 0, x["progress"] or 0), reverse=True)
     return res
 
 @router.post("/students/{student_id}/enroll")
@@ -312,13 +365,52 @@ def bulk_create_students(data: BulkStudentCreate, db: Session = Depends(get_db),
     created_list = []
     
     for line in lines:
-        parts = [p.strip() for p in line.split(",")]
-        name = parts[0]
-        email = parts[1] if len(parts) > 1 else f"{name.lower().replace(' ', '.')}@school.edu"
+        # Strip comments or empty lines
+        if not line or line.startswith("#") or line.startswith("//"):
+            continue
+            
+        # Parse delimiter: tab, semicolon, pipe, or comma
+        if "\t" in line:
+            parts = [p.strip().strip('"\'') for p in line.split("\t")]
+        elif ";" in line:
+            parts = [p.strip().strip('"\'') for p in line.split(";")]
+        elif "|" in line:
+            parts = [p.strip().strip('"\'') for p in line.split("|")]
+        else:
+            parts = [p.strip().strip('"\'') for p in line.split(",")]
+            
+        if not parts or not parts[0]:
+            continue
+            
+        col1 = parts[0].strip()
+        col2 = parts[1].strip() if len(parts) > 1 else ""
+        col3 = parts[2].strip() if len(parts) > 2 else ""
+        
+        # Check if this is a CSV header row (e.g. "name, email")
+        if col1.lower() in ["name", "student name", "fullname", "full name", "username", "student"] and ("email" in col2.lower() or "mail" in col2.lower() or not col2):
+            continue
+            
+        # Determine name and email
+        if "@" in col1 and not col2:
+            email = col1.lower()
+            name = col1.split("@")[0].replace(".", " ").title()
+        elif "@" in col2:
+            name = col1
+            email = col2.lower()
+        elif "<" in col1 and ">" in col1:
+            name_part, email_part = col1.split("<", 1)
+            name = name_part.strip() or "Student"
+            email = email_part.replace(">", "").strip().lower()
+        else:
+            name = col1
+            clean_name = "".join(c for c in name.lower() if c.isalnum() or c in " ._-").replace(" ", ".")
+            email = f"{clean_name}@school.edu" if clean_name else f"student_{secrets.token_hex(2)}@school.edu"
+            
+        custom_password = col3 if col3 else None
         
         existing = db.query(User).filter(User.email == email).first()
         if not existing:
-            plain_pwd = "LF-" + secrets.token_hex(3).upper()
+            plain_pwd = custom_password or generate_unique_student_password()
             student = User(
                 role="student",
                 name=name,
@@ -333,7 +425,7 @@ def bulk_create_students(data: BulkStudentCreate, db: Session = Depends(get_db),
             db.refresh(student)
             
             if data.classroom_id:
-                enrollment = Enrollment(student_id=student.id, classroom_id=data.classroom_id)
+                enrollment = Enrollment(student_id=student.id, classroom_id=data.classroom_id, status="approved")
                 db.add(enrollment)
                 db.commit()
             
@@ -341,13 +433,49 @@ def bulk_create_students(data: BulkStudentCreate, db: Session = Depends(get_db),
                 "id": student.id,
                 "name": student.name,
                 "email": student.email,
-                "password": plain_pwd
+                "password": plain_pwd,
+                "status": "Created"
+            })
+        else:
+            # Student already exists in PostgreSQL
+            if not existing.plain_password:
+                plain_pwd = custom_password or generate_unique_student_password()
+                existing.plain_password = plain_pwd
+                existing.password_hash = get_password_hash(plain_pwd)
+            elif custom_password:
+                existing.plain_password = custom_password
+                existing.password_hash = get_password_hash(custom_password)
+            else:
+                plain_pwd = existing.plain_password
+                
+            if existing.created_by is None:
+                existing.created_by = current_teacher.id
+            existing.is_approved = True
+            
+            if data.classroom_id:
+                enr_exists = db.query(Enrollment).filter(
+                    Enrollment.student_id == existing.id,
+                    Enrollment.classroom_id == data.classroom_id
+                ).first()
+                if not enr_exists:
+                    enr = Enrollment(student_id=existing.id, classroom_id=data.classroom_id, status="approved")
+                    db.add(enr)
+                elif enr_exists.status != "approved":
+                    enr_exists.status = "approved"
+            db.commit()
+            
+            created_list.append({
+                "id": existing.id,
+                "name": existing.name,
+                "email": existing.email,
+                "password": existing.plain_password,
+                "status": "Ready"
             })
             
     return {
         "created_count": len(created_list),
         "students": created_list,
-        "message": f"Successfully created {len(created_list)} student accounts."
+        "message": f"Successfully generated credentials for {len(created_list)} student accounts."
     }
 
 # -------------------------------------------------------------
@@ -594,6 +722,7 @@ def get_unit_details(unit_id: int, db: Session = Depends(get_db), current_teache
                 "low_confidence": getattr(v, "low_confidence", False) or v_content.get("low_confidence", False),
                 "created_at": v.created_at,
                 "approved_at": v.approved_at,
+                "content_json": v_content,
                 "questions_count": len(v_content.get("questions", [])) if a.type == "quiz" else None
             })
 
@@ -849,17 +978,45 @@ def generate_learning_pack(data: GenerateAssetsRequest, db: Session = Depends(ge
         q_count = data.quiz_count or obj_constraints.get("quiz_count", 3)
         diff_mode = data.difficulty or obj_constraints.get("difficulty", "Medium")
 
-        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS
-        exp_data = generate_concept_explanation(
-            obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"),
-            is_low_confidence=is_obj_low_conf
-        )
-        ex_data = generate_worked_example(obj.text, matched_chunks, glossary, "Apply")
-        quiz_data = generate_formative_quiz(obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode)
-        key_data = generate_answer_key(obj.text, quiz_data, matched_chunks)
-        easy_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "easy")
-        adv_data = generate_differentiated_practice(obj.text, matched_chunks, glossary, "advanced")
-        rev_data = generate_revision_sheet(obj.text, matched_chunks, exp_data, ex_data, quiz_data, glossary)
+        # Grounded generation for supported objectives: ALL 7 DISTINCT ASSETS (Parallel Multi-Threaded Execution)
+        from concurrent.futures import ThreadPoolExecutor
+
+        # Phase 1: Parallel generation of independent core assets
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            f_exp = executor.submit(
+                generate_concept_explanation,
+                obj.text, matched_chunks, glossary, obj.bloom_level, getattr(obj, "target_level", "Standard"),
+                is_low_confidence=is_obj_low_conf
+            )
+            f_ex = executor.submit(
+                generate_worked_example,
+                obj.text, matched_chunks, glossary, "Apply"
+            )
+            f_quiz = executor.submit(
+                generate_formative_quiz,
+                obj.text, matched_chunks, glossary, obj.bloom_level, num_questions=q_count, difficulty_mode=diff_mode
+            )
+            f_easy = executor.submit(
+                generate_differentiated_practice,
+                obj.text, matched_chunks, glossary, "easy"
+            )
+            f_adv = executor.submit(
+                generate_differentiated_practice,
+                obj.text, matched_chunks, glossary, "advanced"
+            )
+
+            exp_data = f_exp.result()
+            ex_data = f_ex.result()
+            quiz_data = f_quiz.result()
+            easy_data = f_easy.result()
+            adv_data = f_adv.result()
+
+        # Phase 2: Parallel generation of dependent answer key & revision sheet
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            f_key = executor.submit(generate_answer_key, obj.text, quiz_data, matched_chunks)
+            f_rev = executor.submit(generate_revision_sheet, obj.text, matched_chunks, exp_data, ex_data, quiz_data, glossary)
+            key_data = f_key.result()
+            rev_data = f_rev.result()
 
         asset_blueprints = [
             ("explanation", exp_data),
@@ -1121,6 +1278,90 @@ def approve_asset_version(version_id: int, action: AssetReviewAction, db: Sessio
         "approved_at": ver.approved_at
     }
 
+@router.post("/asset-versions/{version_id}/restore")
+def restore_asset_version(
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    """
+    Applies an older asset version as a new active draft version (e.g. restoring v1 questions to replace current questions).
+    """
+    target_ver = db.query(AssetVersion).filter(AssetVersion.id == version_id).first()
+    if not target_ver:
+        raise HTTPException(status_code=404, detail="Target version not found")
+        
+    asset = db.query(Asset).filter(Asset.id == target_ver.asset_id).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+        
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id, Unit.teacher_id == current_teacher.id).first()
+    if not unit:
+        raise HTTPException(status_code=403, detail="Unauthorized access to this asset")
+        
+    prev_latest = db.query(AssetVersion).filter(AssetVersion.asset_id == asset.id).order_by(AssetVersion.version_no.desc()).first()
+    new_version_no = (prev_latest.version_no + 1) if prev_latest else 1
+    
+    content_data = json.loads(target_ver.content_json) if target_ver.content_json else {}
+    
+    # Create new draft version with target_ver's content
+    new_ver = AssetVersion(
+        asset_id=asset.id,
+        version_no=new_version_no,
+        content_json=target_ver.content_json,
+        status="draft",
+        source_version_id=target_ver.source_version_id,
+        chunk_ids=target_ver.chunk_ids,
+        low_confidence=target_ver.low_confidence
+    )
+    db.add(new_ver)
+    db.commit()
+    db.refresh(new_ver)
+    
+    # If quiz, sync QuizItems and update Answer Key
+    if asset.type == "quiz":
+        sync_quiz_items_for_asset(
+            db=db,
+            asset=asset,
+            content_data=content_data,
+            teacher_id=current_teacher.id,
+            regen_reason=f"Restored from Version {target_ver.version_no}",
+            regen_category="Version Restore",
+            force_sync=True
+        )
+        
+        # Sync corresponding answer key
+        obj = db.query(Objective).filter(Objective.id == asset.objective_id).first()
+        obj_text = obj.text if obj else unit.title
+        source = db.query(Source).filter(Source.id == unit.source_id).first()
+        latest_source_version = db.query(SourceVersion).filter(SourceVersion.source_id == source.id).order_by(SourceVersion.version_no.desc()).first() if source else None
+        chunks_records = db.query(Chunk).filter(Chunk.source_version_id == latest_source_version.id).order_by(Chunk.chunk_index.asc()).all() if latest_source_version else []
+        chunks = [{"id": c.id, "chunk_index": c.chunk_index, "text": c.text} for c in chunks_records]
+        
+        sync_key = generate_answer_key(obj_text, content_data, chunks)
+        ak_asset = db.query(Asset).filter(Asset.unit_id == unit.id, Asset.objective_id == asset.objective_id, Asset.type == "answer_key").first()
+        if ak_asset and latest_source_version:
+            ak_prev_ver = db.query(AssetVersion).filter(AssetVersion.asset_id == ak_asset.id).order_by(AssetVersion.version_no.desc()).first()
+            ak_ver_no = (ak_prev_ver.version_no + 1) if ak_prev_ver else 1
+            ak_new_ver = AssetVersion(
+                asset_id=ak_asset.id,
+                version_no=ak_ver_no,
+                content_json=json.dumps(sync_key),
+                status="draft",
+                source_version_id=latest_source_version.id,
+                chunk_ids=json.dumps(sync_key.get("chunk_ids", []))
+            )
+            db.add(ak_new_ver)
+            db.commit()
+
+    return {
+        "message": f"Successfully applied Version {target_ver.version_no} as new active Version {new_version_no}.",
+        "asset_id": asset.id,
+        "version_id": new_ver.id,
+        "version_no": new_version_no,
+        "content_json": content_data
+    }
+
 @router.post("/units/{unit_id}/approve-all")
 def approve_all_unit_assets(unit_id: int, db: Session = Depends(get_db), current_teacher: User = Depends(teacher_required)):
     unit = db.query(Unit).filter(Unit.id == unit_id, Unit.teacher_id == current_teacher.id).first()
@@ -1332,6 +1573,15 @@ def sync_quiz_items_for_asset(
                 db.add(item_ver)
                 db.commit()
                 created_items.append(item)
+                
+        # If new question count is smaller than existing items during full sync, clean up excess items
+        if len(existing_items) > len(questions):
+            excess_items = existing_items[len(questions):]
+            excess_ids = [it.id for it in excess_items]
+            if excess_ids:
+                db.query(QuizItemVersion).filter(QuizItemVersion.quiz_item_id.in_(excess_ids)).delete(synchronize_session=False)
+                db.query(QuizItem).filter(QuizItem.id.in_(excess_ids)).delete(synchronize_session=False)
+                db.commit()
                 
     return created_items or existing_items
 
@@ -1989,17 +2239,65 @@ def get_classroom_analytics(classroom_id: int, db: Session = Depends(get_db), cu
     for enr in enrollments:
         stu = db.query(User).filter(User.id == enr.student_id).first()
         if stu:
-            sub_count = db.query(Submission).filter(Submission.student_id == stu.id, Submission.assignment_id.in_(a_ids)).count() if a_ids else 0
-            latest_sub = db.query(Submission).filter(Submission.student_id == stu.id, Submission.assignment_id.in_(a_ids)).order_by(Submission.submitted_at.desc()).first() if a_ids else None
+            completed_subs = db.query(Submission).filter(
+                Submission.student_id == stu.id,
+                Submission.assignment_id.in_(a_ids),
+                Submission.answers_json != "{}"
+            ).order_by(Submission.submitted_at.desc()).all() if a_ids else []
+            
+            latest_sub = completed_subs[0] if completed_subs else None
+            avg_score = round(sum(s.score for s in completed_subs) / len(completed_subs), 1) if completed_subs else None
+            best_score = max((s.score for s in completed_subs), default=None)
+            latest_score = latest_sub.score if latest_sub else None
+            
+            # Unit title for latest assessment
+            latest_unit_title = None
+            if latest_sub:
+                assign = db.query(Assignment).filter(Assignment.id == latest_sub.assignment_id).first()
+                if assign:
+                    ver = db.query(AssetVersion).filter(AssetVersion.id == assign.asset_version_id).first()
+                    if ver:
+                        asset = db.query(Asset).filter(Asset.id == ver.asset_id).first()
+                        if asset:
+                            unit = db.query(Unit).filter(Unit.id == asset.unit_id).first()
+                            if unit:
+                                latest_unit_title = unit.title
+            
+            progress_val = float(latest_score) if latest_score is not None else 0.0
+            
+            mastery_signal = "Not Attempted"
+            if latest_score is not None:
+                if latest_score >= 75:
+                    mastery_signal = "Mastery Achieved"
+                elif latest_score >= 50:
+                    mastery_signal = "Developing"
+                else:
+                    mastery_signal = "Needs Practice"
+                    
+            if not stu.plain_password:
+                stu.plain_password = generate_unique_student_password()
+                stu.password_hash = get_password_hash(stu.plain_password)
+                db.commit()
+
             enrolled_students.append({
                 "id": stu.id,
                 "name": stu.name,
                 "email": stu.email,
-                "password": stu.plain_password or "student123",
+                "password": stu.plain_password,
                 "joined_at": enr.joined_at,
-                "attempts_count": sub_count,
-                "latest_score": latest_sub.score if latest_sub else None
+                "attempts_count": len(completed_subs),
+                "latest_score": latest_score,
+                "average_score": avg_score,
+                "best_score": best_score,
+                "progress": progress_val,
+                "mastery_signal": mastery_signal,
+                "latest_unit_title": latest_unit_title,
+                "has_completed": len(completed_subs) > 0,
+                "latest_submitted_at": latest_sub.submitted_at.isoformat() if (latest_sub and latest_sub.submitted_at) else None
             })
+            
+    # Sort in descending order of progress / assessment result
+    enrolled_students.sort(key=lambda x: (1 if x["has_completed"] else 0, x["progress"] or 0), reverse=True)
     
     # Calculate objective alignment map
     obj_scores = {}
@@ -2181,6 +2479,8 @@ def get_classroom_student_requests(
                 "user_name": resp_user.name if resp_user else "User",
                 "user_role": resp_user.role if resp_user else "unknown",
                 "message": resp.message,
+                "file_url": resp.file_url,
+                "file_name": resp.file_name,
                 "created_at": resp.created_at.isoformat()
             })
             
@@ -2204,6 +2504,38 @@ def get_classroom_student_requests(
     return res
 
 
+@router.post("/classrooms/{classroom_id}/student-requests/create")
+def create_classroom_help_request(
+    classroom_id: int,
+    data: StudentRequestCreate,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+        
+    unit_id = None
+    if data.objective_id:
+        obj = db.query(Objective).filter(Objective.id == data.objective_id).first()
+        if obj:
+            unit_id = obj.unit_id
+            
+    req = StudentRequest(
+        student_id=current_teacher.id,
+        classroom_id=classroom.id,
+        objective_id=data.objective_id,
+        unit_id=unit_id,
+        question_text=data.question_text.strip(),
+        details=data.details.strip() if data.details else None,
+        status="open"
+    )
+    db.add(req)
+    db.commit()
+    db.refresh(req)
+    return {"id": req.id, "message": "Student help request logged successfully"}
+
+
 @router.post("/student-requests/{request_id}/status")
 def update_student_request_status(
     request_id: int,
@@ -2219,7 +2551,7 @@ def update_student_request_status(
     if not classroom:
         raise HTTPException(status_code=403, detail="Unauthorized")
         
-    if data.status not in ["open", "in_progress", "resolved", "closed"]:
+    if data.status not in ["open", "in_progress", "resolved", "closed", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
         
     req.status = data.status
@@ -2243,22 +2575,119 @@ def respond_to_student_request(
     if not classroom:
         raise HTTPException(status_code=403, detail="Unauthorized")
         
-    if not data.message.strip():
-        raise HTTPException(status_code=400, detail="Response message cannot be empty")
+    msg = (data.message or "").strip()
+    if not msg and not data.file_url:
+        raise HTTPException(status_code=400, detail="Response message or file attachment required")
         
     response = RequestResponse(
         request_id=req.id,
         user_id=current_teacher.id,
-        message=data.message.strip()
+        message=msg or "Instructor attached course materials / document.",
+        file_url=data.file_url,
+        file_name=data.file_name
     )
     db.add(response)
     
-    if req.status == "open":
+    if data.status and data.status in ["in_progress", "resolved", "closed", "rejected"]:
+        req.status = data.status
+    elif req.status == "open":
         req.status = "in_progress"
         
     db.commit()
     db.refresh(response)
-    return {"id": response.id, "request_id": req.id, "status": req.status, "message": "Response submitted"}
+    return {"id": response.id, "request_id": req.id, "status": req.status, "message": "Response submitted successfully"}
+
+
+@router.post("/student-requests/{request_id}/respond-file")
+async def respond_file_to_student_request(
+    request_id: int,
+    message: str = Form(""),
+    status: str = Form("resolved"),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    import os, uuid
+    req = db.query(StudentRequest).filter(StudentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    classroom = db.query(Classroom).filter(Classroom.id == req.classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    file_url = None
+    file_name = None
+    
+    if file:
+        os.makedirs("uploads/request_responses", exist_ok=True)
+        clean_orig_name = os.path.basename(file.filename or "notes.pdf")
+        saved_filename = f"{uuid.uuid4().hex[:10]}_{clean_orig_name}"
+        save_path = os.path.join("uploads", "request_responses", saved_filename)
+        
+        contents = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(contents)
+            
+        file_url = f"/uploads/request_responses/{saved_filename}"
+        file_name = clean_orig_name
+        
+    msg = message.strip()
+    if not msg and not file_url:
+        raise HTTPException(status_code=400, detail="Please provide a message or attach a file.")
+        
+    response = RequestResponse(
+        request_id=req.id,
+        user_id=current_teacher.id,
+        message=msg or (f"Attached course material: {file_name}" if file_name else "Instructor fulfilled your request."),
+        file_url=file_url,
+        file_name=file_name
+    )
+    db.add(response)
+    
+    if status in ["in_progress", "resolved", "closed", "rejected"]:
+        req.status = status
+    else:
+        req.status = "resolved"
+        
+    db.commit()
+    db.refresh(response)
+    return {
+        "id": response.id,
+        "request_id": req.id,
+        "status": req.status,
+        "file_url": file_url,
+        "file_name": file_name,
+        "message": "Response with attachment submitted successfully"
+    }
+
+
+@router.post("/student-requests/{request_id}/reject")
+def reject_student_request(
+    request_id: int,
+    data: StudentRequestReject,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    req = db.query(StudentRequest).filter(StudentRequest.id == request_id).first()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+        
+    classroom = db.query(Classroom).filter(Classroom.id == req.classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+        
+    reason_msg = (data.reason or "Request declined by instructor.").strip()
+    response = RequestResponse(
+        request_id=req.id,
+        user_id=current_teacher.id,
+        message=f"[DECLINED] {reason_msg}"
+    )
+    db.add(response)
+    req.status = "rejected"
+    db.commit()
+    db.refresh(req)
+    return {"id": req.id, "status": "rejected", "message": "Request marked as rejected"}
 
 
 @router.get("/classrooms/{classroom_id}/objectives")

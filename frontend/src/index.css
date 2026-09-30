@@ -93,3 +93,51 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #ff6200;
 }
+
+/* Custom Keyframe Animations */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinReverseSlow {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.35; transform: scale(0.98); }
+  50% { opacity: 0.85; transform: scale(1.06); filter: drop-shadow(0 0 16px rgba(255, 98, 0, 0.8)); }
+}
+
+@keyframes shimmerScan {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes floatParticle {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-8px) scale(1.08); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 12s linear infinite;
+}
+
+.animate-spin-reverse-slow {
+  animation: spinReverseSlow 16s linear infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, rgba(255, 98, 0, 0.2) 0%, rgba(255, 166, 0, 0.8) 50%, rgba(255, 98, 0, 0.2) 100%);
+  background-size: 200% 100%;
+  animation: shimmerScan 2s infinite;
+}
+
+.animate-float {
+  animation: floatParticle 3s ease-in-out infinite;
+}

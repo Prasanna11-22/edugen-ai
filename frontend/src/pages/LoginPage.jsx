@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { 
-  Flame, 
   Lock, 
   Mail, 
   ArrowRight, 
@@ -17,6 +16,7 @@ import {
   Send,
   X
 } from 'lucide-react';
+import { RetrievoIcon } from '../components/RetrievoLogo';
 
 const LoginPage = ({ onNavigate }) => {
   const { login } = useAuth();
@@ -188,8 +188,8 @@ const LoginPage = ({ onNavigate }) => {
       
       {/* Brand Header */}
       <div className="text-center mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange flex items-center justify-center shadow-neon mx-auto mb-4">
-          <Flame className="w-8 h-8 text-white" />
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange p-1.5 shadow-neon mx-auto mb-4 flex items-center justify-center">
+          <RetrievoIcon className="w-10 h-10 drop-shadow-md" />
         </div>
         <h2 className="text-2xl font-bold text-white">Sign In to Retrievo</h2>
         <p className="text-xs text-slate-400 mt-1">Enter your registered credentials to access your studio</p>

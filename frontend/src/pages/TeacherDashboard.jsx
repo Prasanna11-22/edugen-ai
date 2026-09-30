@@ -154,7 +154,7 @@ const TeacherDashboard = ({ onNavigate, onSelectUnit, onSelectClassroom }) => {
 
           {loading ? (
             <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-              <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading units from PostgreSQL...
+              <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading units...
             </div>
           ) : assignedUnits.length === 0 ? (
             <GlassCard className="text-center py-12">
@@ -299,7 +299,7 @@ const TeacherDashboard = ({ onNavigate, onSelectUnit, onSelectClassroom }) => {
                   <h3 className="text-xl font-bold text-white">Generated Lessons History</h3>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  All {units.length} objective-grounded lesson units generated and stored in PostgreSQL storage.
+                  All {units.length} objective-grounded lesson units generated and stored in history.
                 </p>
               </div>
               <button
