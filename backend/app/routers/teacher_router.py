@@ -2381,6 +2381,243 @@ def get_classroom_analytics(classroom_id: int, db: Session = Depends(get_db), cu
         "student_results": student_scores
     }
 
+@router.get("/classrooms/{classroom_id}/assessment-telemetry")
+def get_classroom_assessment_telemetry(
+    classroom_id: int,
+    assignment_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(teacher_required)
+):
+    classroom = db.query(Classroom).filter(Classroom.id == classroom_id, Classroom.teacher_id == current_teacher.id).first()
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Classroom not found")
+
+    # Fetch all assignments for this classroom
+    all_assignments = db.query(Assignment).filter(Assignment.classroom_id == classroom.id).order_by(Assignment.id.desc()).all()
+    if not all_assignments:
+        return {
+            "classroom_id": classroom.id,
+            "classroom_name": classroom.name,
+            "has_assignments": False,
+            "message": "No assessments assigned to this classroom yet."
+        }
+
+    # Selected assignment or most recent
+    target_assignment = None
+    if assignment_id:
+        target_assignment = db.query(Assignment).filter(Assignment.id == assignment_id, Assignment.classroom_id == classroom.id).first()
+    if not target_assignment:
+        target_assignment = all_assignments[0]
+
+    # Find the unit and all assessment assets related to this assignment
+    ver = db.query(AssetVersion).filter(AssetVersion.id == target_assignment.asset_version_id).first()
+    asset = db.query(Asset).filter(Asset.id == ver.asset_id).first() if ver else None
+    unit = db.query(Unit).filter(Unit.id == asset.unit_id).first() if asset else None
+
+    # Get all assignment IDs associated with this unit in this classroom
+    unit_asset_ids = [a.id for a in db.query(Asset.id).filter(Asset.unit_id == unit.id).all()] if unit else ([asset.id] if asset else [])
+    unit_ver_ids = [v.id for v in db.query(AssetVersion.id).filter(AssetVersion.asset_id.in_(unit_asset_ids), AssetVersion.status == "approved").all()] if unit_asset_ids else []
+    unit_assignments = db.query(Assignment).filter(Assignment.classroom_id == classroom.id, Assignment.asset_version_id.in_(unit_ver_ids)).all() if unit_ver_ids else [target_assignment]
+    unit_assign_ids = [a.id for a in unit_assignments]
+
+    # Enrolled students
+    enrollments = db.query(Enrollment).filter(Enrollment.classroom_id == classroom.id, Enrollment.status == "approved").all()
+    enrolled_student_ids = [e.student_id for e in enrollments]
+    total_enrolled = len(enrolled_student_ids)
+
+    # Submissions
+    submissions = db.query(Submission).filter(
+        Submission.assignment_id.in_(unit_assign_ids),
+        Submission.answers_json != "{}"
+    ).order_by(Submission.submitted_at.desc()).all() if unit_assign_ids else []
+
+    # Map submissions by student_id (latest submission per student)
+    student_latest_sub = {}
+    for sub in submissions:
+        if sub.student_id not in student_latest_sub:
+            student_latest_sub[sub.student_id] = sub
+
+    attempted_count = len(student_latest_sub)
+    pending_count = max(0, total_enrolled - attempted_count)
+    attempted_percent = round((attempted_count / max(1, total_enrolled)) * 100, 1)
+
+    scores = [sub.score for sub in student_latest_sub.values()]
+    avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+    mastery_count = sum(1 for s in scores if s >= 75)
+    developing_count = sum(1 for s in scores if 50 <= s < 75)
+    practice_count = sum(1 for s in scores if s < 50)
+
+    # Gather all questions from the unit's assessment assets
+    questions_list = []
+    seen_q_ids = set()
+
+    for u_ver_id in unit_ver_ids:
+        u_ver = db.query(AssetVersion).filter(AssetVersion.id == u_ver_id).first()
+        if not u_ver or not u_ver.content_json:
+            continue
+        try:
+            content = json.loads(u_ver.content_json)
+        except:
+            continue
+        u_asset = db.query(Asset).filter(Asset.id == u_ver.asset_id).first()
+        u_obj = db.query(Objective).filter(Objective.id == u_asset.objective_id).first() if (u_asset and u_asset.objective_id) else None
+        obj_title = u_obj.text if u_obj else (unit.title if unit else "General Objective")
+        
+        q_items = content.get("questions", [])
+        for idx, q in enumerate(q_items):
+            raw_id = q.get("id", idx + 1)
+            full_q_id = f"q_{u_asset.id}_{raw_id}" if u_asset else str(raw_id)
+            if full_q_id in seen_q_ids:
+                continue
+            seen_q_ids.add(full_q_id)
+
+            opts = q.get("options", {})
+            corr_key = str(q.get("correct_option_id") or q.get("correct_option") or q.get("_correct_option") or "").strip().upper()
+            corr_text = str(q.get("correct_answer") or q.get("correct_answer_text") or "").strip()
+
+            if not corr_key and corr_text and isinstance(opts, dict):
+                for ok, ov in opts.items():
+                    if str(ov).strip().lower() == corr_text.lower():
+                        corr_key = ok.strip().upper()
+                        break
+            if not corr_key:
+                corr_key = "A"
+
+            # Compute responses across student submissions
+            option_counts = {k: 0 for k in (opts.keys() if isinstance(opts, dict) else ["A", "B", "C", "D"])}
+            q_correct_count = 0
+            q_total_responses = 0
+            student_responses = []
+
+            for st_id, sub in student_latest_sub.items():
+                st_user = db.query(User).filter(User.id == st_id).first()
+                st_name = st_user.name if st_user else "Student"
+                try:
+                    ans_map = json.loads(sub.answers_json)
+                except:
+                    ans_map = {}
+                
+                student_ans = str(ans_map.get(full_q_id, ans_map.get(str(raw_id), ans_map.get(f"q{idx+1}", "")))).strip().upper()
+                if student_ans:
+                    q_total_responses += 1
+                    if student_ans in option_counts:
+                        option_counts[student_ans] += 1
+                    
+                    is_corr = False
+                    if student_ans == corr_key:
+                        is_corr = True
+                    elif isinstance(opts, dict) and student_ans in opts and str(opts[student_ans]).strip().lower() == corr_text.lower():
+                        is_corr = True
+                    
+                    if is_corr:
+                        q_correct_count += 1
+                        
+                    student_responses.append({
+                        "student_id": st_id,
+                        "student_name": st_name,
+                        "selected_option": student_ans,
+                        "is_correct": is_corr
+                    })
+
+            correct_pct = round((q_correct_count / max(1, q_total_responses)) * 100, 1) if q_total_responses > 0 else 0.0
+            missed_pct = round(100.0 - correct_pct, 1) if q_total_responses > 0 else 0.0
+
+            # Option distribution
+            option_dist = []
+            distractor_key = None
+            max_distractor_count = 0
+            if isinstance(opts, dict):
+                for opt_k, opt_v in opts.items():
+                    c_count = option_counts.get(opt_k, 0)
+                    c_pct = round((c_count / max(1, q_total_responses)) * 100, 1) if q_total_responses > 0 else 0.0
+                    is_correct_opt = (opt_k == corr_key)
+                    if not is_correct_opt and c_count > max_distractor_count:
+                        max_distractor_count = c_count
+                        distractor_key = opt_k
+                    option_dist.append({
+                        "option_key": opt_k,
+                        "option_text": str(opt_v),
+                        "count": c_count,
+                        "percent": c_pct,
+                        "is_correct": is_correct_opt
+                    })
+
+            questions_list.append({
+                "question_id": full_q_id,
+                "item_number": len(questions_list) + 1,
+                "question_text": q.get("question") or q.get("question_text", f"Question {idx+1}"),
+                "objective_title": obj_title,
+                "difficulty_tier": q.get("difficulty_tier") or q.get("tier") or "Medium",
+                "correct_option": corr_key,
+                "correct_answer_text": corr_text or (opts.get(corr_key, "") if isinstance(opts, dict) else ""),
+                "rationale": q.get("rationale") or q.get("explanation", ""),
+                "total_responses": q_total_responses,
+                "correct_count": q_correct_count,
+                "correct_percent": correct_pct,
+                "missed_count": max(0, q_total_responses - q_correct_count),
+                "missed_percent": missed_pct,
+                "option_distribution": option_dist,
+                "common_distractor": distractor_key if max_distractor_count > 0 else None,
+                "struggle_flag": missed_pct >= 40.0 and q_total_responses > 0,
+                "student_responses": student_responses
+            })
+
+    # Student Roster
+    student_roster = []
+    for enr_id in enrolled_student_ids:
+        st_user = db.query(User).filter(User.id == enr_id).first()
+        if not st_user:
+            continue
+        sub = student_latest_sub.get(st_user.id)
+        has_sub = sub is not None
+        score_val = sub.score if has_sub else None
+        submitted_at_iso = sub.submitted_at.isoformat() if has_sub and sub.submitted_at else None
+        
+        signal = "Not Attempted"
+        if score_val is not None:
+            if score_val >= 75:
+                signal = "Mastery Achieved"
+            elif score_val >= 50:
+                signal = "Developing"
+            else:
+                signal = "Needs Practice"
+
+        student_roster.append({
+            "student_id": st_user.id,
+            "student_name": st_user.name,
+            "student_email": st_user.email,
+            "has_submitted": has_sub,
+            "score": score_val,
+            "mastery_signal": signal,
+            "submitted_at": submitted_at_iso
+        })
+
+    # Sort student roster: Attempted (Yes) with highest score first, then Pending (No)
+    student_roster.sort(key=lambda x: (1 if x["has_submitted"] else 0, x["score"] or 0), reverse=True)
+
+    return {
+        "classroom_id": classroom.id,
+        "classroom_name": classroom.name,
+        "unit_title": unit.title if unit else "Classroom Assessment",
+        "assignment_id": target_assignment.id,
+        "has_assignments": True,
+        "participation": {
+            "total_enrolled": total_enrolled,
+            "attempted_count": attempted_count,
+            "pending_count": pending_count,
+            "attempted_percent": attempted_percent,
+            "pending_percent": round(100.0 - attempted_percent, 1)
+        },
+        "performance": {
+            "average_score": avg_score,
+            "mastery_count": mastery_count,
+            "developing_count": developing_count,
+            "practice_count": practice_count
+        },
+        "questions_telemetry": questions_list,
+        "student_roster": student_roster
+    }
+
 
 # ----------------------------------------------------------------------
 # CLASS STRUGGLE SIGNALS & STUDENT REQUESTS ENDPOINTS

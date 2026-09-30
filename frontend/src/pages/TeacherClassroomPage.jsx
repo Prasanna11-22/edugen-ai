@@ -3,10 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { 
   Users, UserPlus, Upload, BarChart3, Target, Award, Key, Copy, Check, 
-  RefreshCw, CheckCircle2, ChevronRight, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus,
+  RefreshCw, CheckCircle2, ChevronRight, ChevronDown, ChevronUp, BookOpen, AlertCircle, Sparkles, Plus, GraduationCap, FolderPlus,
   AlertTriangle, HelpCircle, MessageSquare, Filter, X, Send,
   ShieldCheck, Clock, UserCheck, UserX, Trash2, Paperclip, FileText, Download, Ban,
-  TrendingUp, ArrowUpDown
+  TrendingUp, ArrowUpDown, PieChart, Eye, CheckCircle, XCircle, Layers
 } from 'lucide-react';
 import GlassCard from '../components/GlassCard';
 import Badge from '../components/Badge';
@@ -15,7 +15,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   const { token } = useAuth();
   const { showToast } = useToast();
   
-  // Tabs: 'students' or 'classrooms'
+  // Tabs: 'students', 'classrooms', 'telemetry', or 'requests'
   const [activeTab, setActiveTab] = useState('classrooms');
   
   // Data states
@@ -26,6 +26,13 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
   
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // Assessment Results & Diagnostic Telemetry State
+  const [telemetryData, setTelemetryData] = useState(null);
+  const [loadingTelemetry, setLoadingTelemetry] = useState(false);
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState(new Set());
+  const [telemetryRosterFilter, setTelemetryRosterFilter] = useState('all'); // 'all', 'attempted', 'pending'
+  const [inspectingStudent, setInspectingStudent] = useState(null);
 
   // Sorting state for students tables (Default: descending progress)
   const [enrolledSortBy, setEnrolledSortBy] = useState('progress_desc');
@@ -95,6 +102,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       fetchStruggleSignals(selectedClassId);
       fetchStudentRequests(selectedClassId, selectedObjectiveFilter, requestStatusFilter);
       fetchClassroomObjectives(selectedClassId);
+      fetchAssessmentTelemetry(selectedClassId);
     }
   }, [selectedClassId, selectedObjectiveFilter, requestStatusFilter]);
 
@@ -204,6 +212,46 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
     } finally {
       setLoadingAnalytics(false);
     }
+  };
+
+  const fetchAssessmentTelemetry = async (classId) => {
+    if (!classId) return;
+    setLoadingTelemetry(true);
+    try {
+      const res = await fetch(`/api/teacher/classrooms/${classId}/assessment-telemetry`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTelemetryData(data);
+      }
+    } catch (err) {
+      console.error("Assessment telemetry fetch error", err);
+    } finally {
+      setLoadingTelemetry(false);
+    }
+  };
+
+  const toggleQuestionExpand = (questionId) => {
+    setExpandedQuestionIds(prev => {
+      const next = new Set(prev);
+      if (next.has(questionId)) {
+        next.delete(questionId);
+      } else {
+        next.add(questionId);
+      }
+      return next;
+    });
+  };
+
+  const expandAllQuestions = () => {
+    if (!telemetryData?.questions_telemetry) return;
+    const allIds = telemetryData.questions_telemetry.map(q => q.question_id);
+    setExpandedQuestionIds(new Set(allIds));
+  };
+
+  const collapseAllQuestions = () => {
+    setExpandedQuestionIds(new Set());
   };
 
   const fetchStruggleSignals = async (classId) => {
@@ -645,6 +693,18 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
     });
   }, [allStudents, directorySortBy]);
 
+  // Filtered Roster for Assessment Telemetry (Did vs. Didn't)
+  const filteredTelemetryRoster = React.useMemo(() => {
+    if (!telemetryData?.student_roster) return [];
+    if (telemetryRosterFilter === 'attempted') {
+      return telemetryData.student_roster.filter(s => s.has_submitted);
+    }
+    if (telemetryRosterFilter === 'pending') {
+      return telemetryData.student_roster.filter(s => !s.has_submitted);
+    }
+    return telemetryData.student_roster;
+  }, [telemetryData?.student_roster, telemetryRosterFilter]);
+
   return (
     <div className="space-y-8 pb-16">
       
@@ -698,6 +758,16 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'classrooms' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
         >
           <BookOpen className="w-4 h-4" /> Classrooms & Unique Join Codes ({classrooms.length})
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('telemetry');
+            if (selectedClassId) fetchAssessmentTelemetry(selectedClassId);
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'telemetry' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
+        >
+          <BarChart3 className="w-4 h-4" /> Assessment Results & Telemetry
         </button>
 
         <button
@@ -998,6 +1068,17 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                       title="Copy Join Code"
                     >
                       {copiedKey === 'join_code' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                    <span className="text-slate-700">|</span>
+                    <button
+                      onClick={() => {
+                        setActiveTab('telemetry');
+                        fetchAssessmentTelemetry(activeClass.id);
+                      }}
+                      className="px-2 py-0.5 rounded text-neon-orange hover:text-white hover:bg-neon-orange/20 transition flex items-center gap-1 font-mono text-[11px]"
+                      title="View Assessment Results & Telemetry"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" /> Telemetry
                     </button>
                     <span className="text-slate-700">|</span>
                     <button
@@ -1738,6 +1819,620 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               </div>
             )}
           </GlassCard>
+        </div>
+      )}
+
+      {/* TAB 4: ASSESSMENT RESULTS & DIAGNOSTIC TELEMETRY */}
+      {activeTab === 'telemetry' && (
+        <div className="space-y-6 animate-in fade-in">
+          
+          {/* Classroom Domain Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-neon-orange/30">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-400 mr-2">Select Classroom Domain:</span>
+              {classrooms.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedClassId(c.id);
+                    fetchAssessmentTelemetry(c.id);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-neon-orange text-white shadow-neon-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
+                >
+                  <span>{c.name} {c.subject ? `(${c.subject})` : ''}</span>
+                </button>
+              ))}
+            </div>
+
+            {activeClass && (
+              <div className="flex items-center gap-3 bg-dark-950/80 p-2 rounded-xl border border-slate-800 text-xs">
+                <span className="text-slate-400 font-mono">Join Code:</span>
+                <span className="text-neon-amber font-mono font-bold tracking-widest text-sm">{activeClass.join_code}</span>
+                <button
+                  onClick={() => fetchAssessmentTelemetry(activeClass.id)}
+                  className="p-1 rounded text-slate-400 hover:text-white flex items-center gap-1 text-[11px] font-mono ml-2"
+                  title="Refresh Telemetry"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingTelemetry ? 'animate-spin text-neon-orange' : ''}`} /> Refresh
+                </button>
+              </div>
+            )}
+          </div>
+
+          {loadingTelemetry ? (
+            <GlassCard className="py-12 text-center">
+              <RefreshCw className="w-8 h-8 animate-spin text-neon-orange mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-white">Aggregating Assessment Telemetry & Diagnostics...</h3>
+              <p className="text-xs text-slate-400 mt-1">Computing question accuracy, option distributions, and participation metrics</p>
+            </GlassCard>
+          ) : !telemetryData || !telemetryData.has_assignments ? (
+            <GlassCard className="text-center py-12">
+              <BarChart3 className="w-10 h-10 text-slate-600 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-white mb-1">No Active Assessments Found</h3>
+              <p className="text-xs text-slate-400 mb-4 max-w-md mx-auto">
+                No approved assessments have been assigned to this classroom yet. Assign an approved assessment in Generate Lesson to unlock live student participation metrics, question diagnostics, and distractor telemetry.
+              </p>
+            </GlassCard>
+          ) : (
+            <div className="space-y-6">
+
+              {/* ========================================================================= */}
+              {/* 1. PARTICIPATION & COMPLETION TELEMETRY (DID [YES] vs. DIDN'T [NO]) */}
+              {/* ========================================================================= */}
+              <GlassCard
+                icon={PieChart}
+                title={`Assessment Completion & Participation: ${telemetryData.unit_title}`}
+                subtitle={`Classroom: ${telemetryData.classroom_name} • Continuous assessment telemetry and participation breakdown`}
+                accent={true}
+              >
+                <div className="space-y-6">
+                  
+                  {/* Top Graphical Did vs. Didn't Dual Progress Bar */}
+                  <div className="p-5 rounded-2xl bg-dark-900/90 border border-slate-800 space-y-4 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                          Student Assessment Participation Rate
+                        </span>
+                        <h4 className="text-base font-bold text-white mt-0.5">
+                          Did (Attempted) vs. Didn't (Pending) Completion Breakdown
+                        </h4>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-bold">
+                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                          <span>Did (Yes): {telemetryData.participation.attempted_count} ({telemetryData.participation.attempted_percent}%)</span>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-mono font-bold">
+                          <XCircle className="w-4 h-4 text-rose-400" />
+                          <span>Didn't (No): {telemetryData.participation.pending_count} ({telemetryData.participation.pending_percent}%)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual Segmented Progress Bar */}
+                    <div className="space-y-1.5">
+                      <div className="w-full h-5 rounded-full bg-dark-950 overflow-hidden border border-slate-700/80 p-0.5 flex">
+                        {telemetryData.participation.attempted_percent > 0 && (
+                          <div
+                            className="h-full rounded-l-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-700 shadow-[0_0_12px_rgba(16,185,129,0.5)] flex items-center justify-center text-[10px] font-mono font-bold text-dark-950"
+                            style={{ width: `${telemetryData.participation.attempted_percent}%` }}
+                            title={`Did (Attempted): ${telemetryData.participation.attempted_percent}%`}
+                          >
+                            {telemetryData.participation.attempted_percent >= 15 ? `✅ ${telemetryData.participation.attempted_percent}% Attempted` : ''}
+                          </div>
+                        )}
+                        {telemetryData.participation.pending_percent > 0 && (
+                          <div
+                            className={`h-full ${telemetryData.participation.attempted_percent === 0 ? 'rounded-full' : 'rounded-r-full'} bg-gradient-to-r from-slate-700 to-rose-900/80 transition-all duration-700 flex items-center justify-center text-[10px] font-mono font-bold text-slate-300`}
+                            style={{ width: `${telemetryData.participation.pending_percent}%` }}
+                            title={`Didn't (Pending): ${telemetryData.participation.pending_percent}%`}
+                          >
+                            {telemetryData.participation.pending_percent >= 15 ? `⏳ ${telemetryData.participation.pending_percent}% Pending` : ''}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 px-1">
+                        <span>0%</span>
+                        <span className="text-white font-bold">{telemetryData.participation.total_enrolled} Total Enrolled Students</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+
+                    {/* KPI Quick Stats Cards */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                      <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center">
+                        <span className="text-[10px] font-mono text-slate-400 block uppercase">Class Average</span>
+                        <span className="text-lg font-bold text-neon-orange font-mono">
+                          {telemetryData.performance.average_score}%
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-emerald-950/20 border border-emerald-500/30 text-center">
+                        <span className="text-[10px] font-mono text-emerald-400 block uppercase">🏆 Mastery (≥75%)</span>
+                        <span className="text-lg font-bold text-emerald-300 font-mono">
+                          {telemetryData.performance.mastery_count} Students
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 text-center">
+                        <span className="text-[10px] font-mono text-amber-400 block uppercase">⚡ Developing (50-74%)</span>
+                        <span className="text-lg font-bold text-amber-300 font-mono">
+                          {telemetryData.performance.developing_count} Students
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/30 text-center">
+                        <span className="text-[10px] font-mono text-rose-400 block uppercase">🌱 Practice (&lt;50%)</span>
+                        <span className="text-lg font-bold text-rose-300 font-mono">
+                          {telemetryData.performance.practice_count} Students
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </GlassCard>
+
+              {/* ========================================================================= */}
+              {/* 2. QUESTION-BY-QUESTION DIAGNOSTIC TELEMETRY (ACCORDION EXPAND BOXES) */}
+              {/* ========================================================================= */}
+              <GlassCard
+                icon={Target}
+                title="Question-by-Question Diagnostic Telemetry"
+                subtitle="Click any question card to expand its prompt, option distribution, distractor analysis, rationale, and student responses."
+                accent={true}
+                action={
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={expandAllQuestions}
+                      className="px-3 py-1.5 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5 text-neon-orange" /> Expand All
+                    </button>
+                    <button
+                      onClick={collapseAllQuestions}
+                      className="px-3 py-1.5 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition"
+                    >
+                      <ChevronUp className="w-3.5 h-3.5 text-slate-400" /> Collapse All
+                    </button>
+                  </div>
+                }
+              >
+                {!telemetryData.questions_telemetry || telemetryData.questions_telemetry.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-500">
+                    No diagnostic questions generated for this assessment asset.
+                  </div>
+                ) : (
+                  <div className="space-y-3.5">
+                    {telemetryData.questions_telemetry.map((q) => {
+                      const isExpanded = expandedQuestionIds.has(q.question_id);
+                      return (
+                        <div
+                          key={q.question_id}
+                          className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
+                            isExpanded
+                              ? 'bg-dark-900/95 border-neon-orange/60 ring-1 ring-neon-orange/30 shadow-neon-sm'
+                              : 'bg-dark-900/70 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          {/* COLLAPSED HEADER - CLICK TO EXPAND */}
+                          <div
+                            onClick={() => toggleQuestionExpand(q.question_id)}
+                            className="p-4 cursor-pointer select-none flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-dark-850/50 transition-colors"
+                          >
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <span className={`w-8 h-8 rounded-xl font-mono font-bold text-xs flex items-center justify-center shrink-0 shadow-sm ${
+                                q.struggle_flag
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50'
+                                  : 'bg-neon-orange/20 text-neon-orange border border-neon-orange/40'
+                              }`}>
+                                Q{q.item_number}
+                              </span>
+
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-bold text-white truncate max-w-md">
+                                    {q.question_text}
+                                  </span>
+                                  <Badge variant={q.difficulty_tier === 'Hard' ? 'error' : q.difficulty_tier === 'Easy' ? 'approved' : 'royal'}>
+                                    {q.difficulty_tier}
+                                  </Badge>
+                                  {q.struggle_flag && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/50 flex items-center gap-1 animate-pulse">
+                                      <AlertTriangle className="w-3 h-3 text-rose-400" /> Struggle Alert (&gt;40% Missed)
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[11px] font-mono text-slate-400 block truncate">
+                                  Objective: {q.objective_title}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Accuracy Graphic on Header */}
+                            <div className="flex items-center gap-4 shrink-0 self-end md:self-center">
+                              <div className="text-right space-y-1 min-w-[170px]">
+                                <div className="flex items-center justify-between text-[11px] font-mono">
+                                  <span className="text-emerald-400 font-bold">✅ Did (Yes): {q.correct_percent}%</span>
+                                  <span className="text-rose-400 font-bold">❌ Missed (No): {q.missed_percent}%</span>
+                                </div>
+                                <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800 flex">
+                                  <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${q.correct_percent}%` }} />
+                                  <div className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${q.missed_percent}%` }} />
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-500 block">
+                                  {q.correct_count} / {q.total_responses} correct answers
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-300">
+                                <span className="text-[11px] font-bold text-neon-orange">
+                                  {isExpanded ? 'Collapse' : 'Expand'}
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="w-4 h-4 text-neon-orange" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* EXPANDED CONTENT - VISIBLE ONLY WHEN CLICKED */}
+                          {isExpanded && (
+                            <div className="p-5 border-t border-slate-800/80 bg-dark-950/60 space-y-5 animate-in fade-in duration-200">
+                              
+                              {/* Full Question Text */}
+                              <div className="p-4 rounded-xl bg-dark-900 border border-slate-800 space-y-2">
+                                <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">
+                                  Question Prompt
+                                </span>
+                                <p className="text-sm text-white font-medium leading-relaxed">
+                                  {q.question_text}
+                                </p>
+                              </div>
+
+                              {/* Verified Correct Key Callout */}
+                              <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/40 flex items-start gap-3">
+                                <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                                <div className="space-y-0.5">
+                                  <div className="text-xs font-bold text-emerald-300">
+                                    Correct Answer: Option {q.correct_option}
+                                  </div>
+                                  <div className="text-xs text-emerald-100 font-mono">
+                                    {q.correct_answer_text}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Option Distribution Graphical Breakdown */}
+                              {q.option_distribution && q.option_distribution.length > 0 && (
+                                <div className="space-y-3">
+                                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                                    Option Choice Distribution (% of students who selected each option)
+                                  </span>
+
+                                  <div className="space-y-2.5">
+                                    {q.option_distribution.map((opt) => (
+                                      <div
+                                        key={opt.option_key}
+                                        className={`p-3 rounded-xl border transition-all ${
+                                          opt.is_correct
+                                            ? 'bg-emerald-950/20 border-emerald-500/40 ring-1 ring-emerald-500/20'
+                                            : opt.option_key === q.common_distractor
+                                            ? 'bg-rose-950/20 border-rose-500/40'
+                                            : 'bg-dark-900/80 border-slate-800'
+                                        }`}
+                                      >
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs mb-1.5">
+                                          <div className="flex items-center gap-2">
+                                            <span className={`w-5 h-5 rounded-lg flex items-center justify-center font-mono font-bold text-[11px] ${
+                                              opt.is_correct
+                                                ? 'bg-emerald-500 text-dark-950'
+                                                : opt.option_key === q.common_distractor
+                                                ? 'bg-rose-500 text-white'
+                                                : 'bg-dark-950 text-slate-300 border border-slate-700'
+                                            }`}>
+                                              {opt.option_key}
+                                            </span>
+                                            <span className="text-white font-medium">{opt.option_text}</span>
+                                            {opt.is_correct && (
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                                ✅ Correct Key
+                                              </span>
+                                            )}
+                                            {!opt.is_correct && opt.option_key === q.common_distractor && (
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                                ⚠ Common Distractor (Misconception Trap)
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          <div className="flex items-center gap-2 font-mono text-xs shrink-0 self-end sm:self-center">
+                                            <span className="font-bold text-white">{opt.percent}%</span>
+                                            <span className="text-slate-400">({opt.count} student{opt.count === 1 ? '' : 's'})</span>
+                                          </div>
+                                        </div>
+
+                                        {/* Option Percentage Bar */}
+                                        <div className="w-full h-1.5 rounded-full bg-dark-950 overflow-hidden border border-slate-800/80">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-500 ${
+                                              opt.is_correct
+                                                ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                                                : opt.option_key === q.common_distractor
+                                                ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]'
+                                                : 'bg-slate-600'
+                                            }`}
+                                            style={{ width: `${Math.max(2, opt.percent)}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Pedagogical Rationale & Explanation */}
+                              {q.rationale && (
+                                <div className="p-4 rounded-xl bg-dark-900 border border-slate-800 space-y-1.5">
+                                  <div className="flex items-center gap-2 text-xs font-bold text-neon-orange">
+                                    <Sparkles className="w-4 h-4" /> Pedagogical Rationale & Diagnostic Note
+                                  </div>
+                                  <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                                    {q.rationale}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Student Choices Breakdown */}
+                              {q.student_responses && q.student_responses.length > 0 && (
+                                <div className="space-y-2">
+                                  <span className="text-xs font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                                    Individual Student Responses ({q.student_responses.length})
+                                  </span>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                                    {q.student_responses.map((sr) => (
+                                      <div
+                                        key={sr.student_id}
+                                        className={`p-2.5 rounded-xl border flex items-center justify-between text-xs ${
+                                          sr.is_correct
+                                            ? 'bg-emerald-950/15 border-emerald-500/30'
+                                            : 'bg-rose-950/15 border-rose-500/30'
+                                        }`}
+                                      >
+                                        <span className="font-semibold text-white truncate max-w-[120px]">
+                                          {sr.student_name}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                                          <span className="text-slate-400">Choice: <b>{sr.selected_option}</b></span>
+                                          <span className={`px-1.5 py-0.5 rounded font-bold ${
+                                            sr.is_correct ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'
+                                          }`}>
+                                            {sr.is_correct ? '✓ Yes' : '✗ No'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </GlassCard>
+
+              {/* ========================================================================= */}
+              {/* 3. STUDENT SUBMISSIONS ROSTER (DID [YES] vs. DIDN'T [NO] FILTERABLE TABLE) */}
+              {/* ========================================================================= */}
+              <GlassCard
+                icon={Users}
+                title="Student Assessment Submissions & Diagnostic Inspector"
+                subtitle="View each enrolled student's submission status, scores, and full diagnostic question inspection"
+                action={
+                  <div className="flex items-center bg-dark-950 p-1 rounded-xl border border-slate-800 text-[11px]">
+                    {[
+                      { id: 'all', label: `All (${telemetryData.student_roster.length})` },
+                      { id: 'attempted', label: `Did (Yes) (${telemetryData.participation.attempted_count})` },
+                      { id: 'pending', label: `Didn't (No) (${telemetryData.participation.pending_count})` }
+                    ].map(tab => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setTelemetryRosterFilter(tab.id)}
+                        className={`px-3 py-1 rounded-lg font-semibold transition ${
+                          telemetryRosterFilter === tab.id
+                            ? 'bg-neon-orange text-white'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                }
+              >
+                {filteredTelemetryRoster.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-500">
+                    No students match the active filter criteria.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+                          <th className="pb-3 font-semibold w-12 text-center">Rank</th>
+                          <th className="pb-3 font-semibold">Student Name</th>
+                          <th className="pb-3 font-semibold">Username / Email</th>
+                          <th className="pb-3 font-semibold">Participation Status</th>
+                          <th className="pb-3 font-semibold text-sky-400 min-w-[180px]">Score Progress</th>
+                          <th className="pb-3 font-semibold">Submitted At</th>
+                          <th className="pb-3 font-semibold text-right">Diagnostic Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredTelemetryRoster.map((st, idx) => {
+                          const hasResult = st.has_submitted && st.score !== null;
+                          return (
+                            <tr key={st.student_id} className="hover:bg-dark-900/40 transition-colors">
+                              <td className="py-3.5 font-mono text-center">
+                                {idx === 0 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-300 inline-flex items-center justify-center text-xs shadow-sm">🥇</span>
+                                ) : idx === 1 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-slate-300/20 border border-slate-300/50 text-slate-200 inline-flex items-center justify-center text-xs shadow-sm">🥈</span>
+                                ) : idx === 2 && hasResult ? (
+                                  <span className="w-6 h-6 rounded-lg bg-amber-700/20 border border-amber-600/50 text-amber-400 inline-flex items-center justify-center text-xs shadow-sm">🥉</span>
+                                ) : (
+                                  <span className="w-6 h-6 rounded-lg bg-dark-950 border border-slate-800 text-slate-400 inline-flex items-center justify-center text-[11px]">#{idx + 1}</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 font-semibold text-white">{st.student_name}</td>
+                              <td className="py-3.5 font-mono text-slate-300">{st.student_email}</td>
+                              <td className="py-3.5">
+                                {st.has_submitted ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 inline-flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-400" /> Did (Attempted)
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-rose-400" /> Didn't (Pending)
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5">
+                                {hasResult ? (
+                                  <div className="space-y-1 min-w-[170px]">
+                                    <div className="flex items-center justify-between text-xs">
+                                      <span className="font-mono font-bold text-white">{st.score}%</span>
+                                      <span className={`text-[10px] font-mono px-2 py-0.2 rounded-full font-bold uppercase ${
+                                        st.score >= 75 ? 'bg-emerald-500/20 text-emerald-300' : st.score >= 50 ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300'
+                                      }`}>
+                                        {st.mastery_signal}
+                                      </span>
+                                    </div>
+                                    <div className="w-full h-1.5 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
+                                      <div
+                                        className={`h-full rounded-full ${st.score >= 75 ? 'bg-emerald-400' : st.score >= 50 ? 'bg-amber-400' : 'bg-rose-500'}`}
+                                        style={{ width: `${Math.min(100, Math.max(5, st.score))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-500 font-mono italic">No submission logged</span>
+                                )}
+                              </td>
+                              <td className="py-3.5 font-mono text-slate-400 text-[11px]">
+                                {st.submitted_at ? new Date(st.submitted_at).toLocaleString() : '—'}
+                              </td>
+                              <td className="py-3.5 text-right">
+                                {st.has_submitted ? (
+                                  <button
+                                    onClick={() => setInspectingStudent(st)}
+                                    className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-neon-orange hover:text-white border border-slate-700 hover:border-neon-orange text-[11px] font-mono flex items-center gap-1 ml-auto shadow-sm transition"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" /> Inspect Answers
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-600 font-mono">Awaiting Attempt</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </GlassCard>
+
+            </div>
+          )}
+
+        </div>
+      )}
+
+      {/* INSPECT STUDENT SUBMISSION MODAL */}
+      {inspectingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-neon-orange" /> Diagnostic Submission: {inspectingStudent.student_name}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  {inspectingStudent.student_email} • Score: <strong className="text-neon-orange">{inspectingStudent.score}%</strong> ({inspectingStudent.mastery_signal})
+                </p>
+              </div>
+              <button
+                onClick={() => setInspectingStudent(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg bg-dark-900 border border-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {telemetryData?.questions_telemetry?.map((q) => {
+                const sResp = q.student_responses?.find(sr => sr.student_id === inspectingStudent.student_id);
+                return (
+                  <div
+                    key={q.question_id}
+                    className={`p-4 rounded-xl border space-y-2.5 ${
+                      sResp?.is_correct
+                        ? 'bg-emerald-950/20 border-emerald-500/40'
+                        : 'bg-rose-950/20 border-rose-500/40'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <span className="text-[11px] font-mono font-bold text-slate-400 uppercase">
+                          Question {q.item_number} • {q.objective_title}
+                        </span>
+                        <p className="text-xs font-semibold text-white">{q.question_text}</p>
+                      </div>
+                      <Badge variant={sResp?.is_correct ? 'approved' : 'error'}>
+                        {sResp?.is_correct ? '✅ Correct (Yes)' : '❌ Missed (No)'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono pt-1">
+                      <div className="p-2 rounded-lg bg-dark-950 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Student's Answer:</span>
+                        <span className={`font-bold ${sResp?.is_correct ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Option {sResp?.selected_option || 'None'}
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-dark-950 border border-slate-800">
+                        <span className="text-slate-400 block text-[10px]">Correct Key:</span>
+                        <span className="font-bold text-emerald-400">
+                          Option {q.correct_option} — {q.correct_answer_text}
+                        </span>
+                      </div>
+                    </div>
+
+                    {q.rationale && (
+                      <p className="text-[11px] text-slate-300 bg-dark-950/80 p-2.5 rounded-lg border border-slate-800/80 leading-relaxed font-sans">
+                        <strong className="text-neon-orange font-mono">Rationale:</strong> {q.rationale}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setInspectingStudent(null)}
+                className="btn-royal text-xs py-2 px-5"
+              >
+                Close Diagnostic View
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
