@@ -6,7 +6,7 @@ const ProvenanceViewer = ({ citations = [], chunkIds = [], sourceChunks = [], co
   const [selectedChunk, setSelectedChunk] = useState(null);
 
   return (
-    <div className="rounded-xl border border-neon-orange/20 bg-dark-900/80 p-4 backdrop-blur-md">
+    <div className="rounded-xl border border-slate-800 bg-dark-900/80 p-4 backdrop-blur-md">
       <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800">
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -30,9 +30,9 @@ const ProvenanceViewer = ({ citations = [], chunkIds = [], sourceChunks = [], co
             <button
               key={idx}
               onClick={() => setSelectedChunk(matchingChunk || { chunk_index: idx + 1, text: `Authoritative verified reference chunk text for citation ${cite}.` })}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all ${selectedChunk?.chunk_index === (idx + 1) ? 'bg-neon-orange text-white shadow-neon-sm border-neon-orange' : 'bg-dark-850 hover:bg-dark-800 text-slate-300 border border-slate-700/80'}`}
+              className={`px-3 py-1 rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all ${selectedChunk?.chunk_index === (idx + 1) ? 'bg-brand-600 text-white shadow-sm border-brand-500/50' : 'bg-dark-850 hover:bg-dark-800 text-slate-300 border border-slate-700/80'}`}
             >
-              <Hash className="w-3 h-3 text-neon-orange" />
+              <Hash className="w-3 h-3 text-brand-400" />
               {cite}
             </button>
           );
@@ -41,10 +41,10 @@ const ProvenanceViewer = ({ citations = [], chunkIds = [], sourceChunks = [], co
 
       {/* Selected Chunk Text Modal / Accordion */}
       {selectedChunk && (
-        <div className="p-3.5 rounded-lg bg-dark-950/90 border border-neon-orange/30 text-xs text-slate-300 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-800 text-neon-amber font-mono font-semibold">
+        <div className="p-3.5 rounded-lg bg-dark-950/90 border border-slate-800 text-xs text-slate-300 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-slate-800 text-brand-300 font-mono font-semibold">
             <span className="flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-neon-orange" /> Authoritative Source Chunk #{selectedChunk.chunk_index}
+              <Layers className="w-3.5 h-3.5 text-brand-400" /> Authoritative Source Chunk #{selectedChunk.chunk_index}
             </span>
             <button 
               onClick={() => setSelectedChunk(null)} 

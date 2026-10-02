@@ -147,7 +147,7 @@ const AppContent = () => {
   };
 
   return (
-    <div className="min-h-screen bg-dark-950 text-slate-100 flex flex-col selection:bg-neon-orange selection:text-white">
+    <div className="min-h-screen bg-dark-950 text-slate-100 flex flex-col selection:bg-brand-600 selection:text-white">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
       
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8">

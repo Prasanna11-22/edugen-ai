@@ -28,8 +28,8 @@ export const ToastProvider = ({ children }) => {
       {/* Toast Notification Container */}
       <div className="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 max-w-sm w-full pointer-events-none">
         {toasts.map((toast) => {
-          let borderStyle = 'border-neon-orange/40 bg-dark-950/95 text-white shadow-neon';
-          let icon = <Info className="w-5 h-5 text-neon-orange shrink-0" />;
+          let borderStyle = 'border-slate-800 bg-dark-950/95 text-white shadow-sm';
+          let icon = <Info className="w-5 h-5 text-brand-400 shrink-0" />;
 
           if (toast.type === 'success') {
             borderStyle = 'border-emerald-500/50 bg-dark-950/95 text-white shadow-[0_0_20px_rgba(16,185,129,0.25)]';

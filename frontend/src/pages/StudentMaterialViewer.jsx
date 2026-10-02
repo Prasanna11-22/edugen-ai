@@ -107,7 +107,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
           <button
             onClick={handleDownloadPDF}
             disabled={downloadingPDF}
-            className="btn-royal text-xs flex items-center gap-1.5 py-2 px-4 shadow-neon disabled:opacity-60 disabled:cursor-not-allowed"
+            className="btn-royal text-xs flex items-center gap-1.5 py-2 px-4 shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {downloadingPDF ? (
               <>
@@ -123,11 +123,11 @@ const StudentMaterialViewer = ({ material, onBack }) => {
       </div>
 
       {/* Main Pack Header Card */}
-      <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-4 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-neon-orange via-neon-amber to-neon-gold" />
+      <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-slate-800 shadow-sm space-y-4 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-600 via-brand-500 to-neon-gold" />
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-neon-amber block mb-1">
+            <span className="text-xs font-mono font-bold uppercase tracking-widest text-brand-300 block mb-1">
               {material.subject || 'Domain'} · {material.unit_title}
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-white">
@@ -138,7 +138,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="px-3 py-1.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-neon-orange font-bold">
+            <span className="px-3 py-1.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-brand-400 font-bold">
               Version {material.version_no || 1}
             </span>
           </div>
@@ -155,7 +155,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
                   isActive
-                    ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                    ? 'bg-brand-600 text-white shadow-sm font-bold'
                     : 'bg-dark-950 hover:bg-dark-900 text-slate-400 hover:text-white border border-slate-800'
                 }`}
               >
@@ -188,14 +188,14 @@ const StudentMaterialViewer = ({ material, onBack }) => {
 
             {summaryPoints.length > 0 && (
               <div className="space-y-2.5 pt-2">
-                <span className="text-xs font-bold text-neon-orange uppercase font-mono tracking-wider block">
+                <span className="text-xs font-bold text-brand-400 uppercase font-mono tracking-wider block">
                   Key Takeaway Points
                 </span>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {summaryPoints.map((pt, idx) => (
                     <div key={idx} className="p-3.5 rounded-xl bg-dark-950 border border-slate-800/90 space-y-1.5">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-neon-orange/20 text-neon-glow flex items-center justify-center text-[10px] font-mono font-bold shrink-0">
+                        <span className="w-5 h-5 rounded-full bg-brand-600/20 text-brand-200 flex items-center justify-center text-[10px] font-mono font-bold shrink-0">
                           {idx + 1}
                         </span>
                         <span className="font-bold text-xs text-white">
@@ -226,8 +226,8 @@ const StudentMaterialViewer = ({ material, onBack }) => {
         >
           <div className="space-y-4">
             {content.problem_statement && (
-              <div className="p-4 rounded-xl bg-dark-950 border border-neon-orange/30 text-xs space-y-1.5">
-                <span className="font-bold text-neon-orange uppercase font-mono text-[10px]">Problem Context:</span>
+              <div className="p-4 rounded-xl bg-dark-950 border border-slate-800 text-xs space-y-1.5">
+                <span className="font-bold text-brand-400 uppercase font-mono text-[10px]">Problem Context:</span>
                 <p className="text-slate-200 font-sans leading-relaxed">{content.problem_statement}</p>
               </div>
             )}
@@ -236,7 +236,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
               {steps.map((st, i) => (
                 <div key={i} className="p-4 sm:p-5 rounded-xl bg-dark-950 border border-slate-800 space-y-2 hover:border-slate-700 transition-all">
                   <div className="flex items-center gap-2.5 font-bold text-white text-xs sm:text-sm">
-                    <span className="w-6 h-6 rounded-lg bg-neon-orange/20 text-neon-glow border border-neon-orange/40 flex items-center justify-center text-xs font-mono shrink-0">
+                    <span className="w-6 h-6 rounded-lg bg-brand-600/20 text-brand-200 border border-slate-800 flex items-center justify-center text-xs font-mono shrink-0">
                       {st.step_number || i + 1}
                     </span>
                     <span>{st.title}</span>
@@ -277,13 +277,13 @@ const StudentMaterialViewer = ({ material, onBack }) => {
           <div className="space-y-5">
             {keyTakeaways.length > 0 && (
               <div className="space-y-3">
-                <span className="text-xs font-bold text-neon-amber uppercase font-mono tracking-wider block">
+                <span className="text-xs font-bold text-brand-300 uppercase font-mono tracking-wider block">
                   Core Architectural Rules & Formulas
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {keyTakeaways.map((item, i) => (
                     <div key={i} className="p-4 rounded-xl bg-dark-950 border border-slate-800 text-xs space-y-2">
-                      <span className="font-bold text-white block text-neon-glow font-mono text-xs">
+                      <span className="font-bold text-white block text-brand-200 font-mono text-xs">
                         {item.concept || item.objective || `Rule #${i + 1}`}
                       </span>
                       <p className="text-slate-300 leading-relaxed font-sans">{item.core_formula_rule}</p>
@@ -304,13 +304,13 @@ const StudentMaterialViewer = ({ material, onBack }) => {
 
             {memoryTriggers.length > 0 && (
               <div className="p-4 rounded-xl bg-dark-950 border border-slate-800 text-xs space-y-2.5">
-                <span className="font-bold text-neon-glow uppercase font-mono text-[10px] flex items-center gap-1.5">
+                <span className="font-bold text-brand-200 uppercase font-mono text-[10px] flex items-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Rapid Exam Recall Points:
                 </span>
                 <ul className="space-y-2 text-slate-300 pl-1">
                   {memoryTriggers.map((trig, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs">
-                      <span className="text-neon-orange font-bold font-mono">▸</span>
+                      <span className="text-brand-400 font-bold font-mono">▸</span>
                       <span>{trig}</span>
                     </li>
                   ))}
@@ -334,7 +334,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
             {glossary.map((item, gIdx) => (
               <div key={gIdx} className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5 hover:border-slate-700 transition-all">
-                <span className="font-bold text-white text-xs text-neon-orange font-mono block">
+                <span className="font-bold text-white text-xs text-brand-400 font-mono block">
                   {item.term}
                 </span>
                 <p className="text-xs text-slate-300 leading-relaxed font-sans">{item.canonical_wording}</p>
@@ -348,12 +348,12 @@ const StudentMaterialViewer = ({ material, onBack }) => {
       {citations.length > 0 && (
         <div className="p-4 rounded-2xl bg-dark-900/60 border border-slate-800/80 text-xs text-slate-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <span>Grounding Provenance: <strong className="text-slate-300 font-mono">{citations.length} Verified Source Chunks</strong></span>
-          <span className="font-mono text-[11px] text-neon-amber">Immutable Ground-Truth Learning Material</span>
+          <span className="font-mono text-[11px] text-brand-300">Immutable Ground-Truth Learning Material</span>
         </div>
       )}
 
       {/* Bottom Call-to-Action for Testing */}
-      <div className="rounded-3xl glass-panel-accent p-6 border border-neon-orange/30 shadow-neon flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div className="rounded-3xl glass-panel-accent p-6 border border-slate-800 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="space-y-1 text-center sm:text-left">
           <h4 className="font-bold text-white text-base">Ready to test your understanding?</h4>
           <p className="text-xs text-slate-300">
@@ -362,7 +362,7 @@ const StudentMaterialViewer = ({ material, onBack }) => {
         </div>
         <button
           onClick={onBack}
-          className="btn-royal text-xs px-6 py-2.5 shadow-neon shrink-0 flex items-center gap-2"
+          className="btn-royal text-xs px-6 py-2.5 shadow-sm shrink-0 flex items-center gap-2"
         >
           Return to Portal & Practice <ArrowRight className="w-3.5 h-3.5" />
         </button>

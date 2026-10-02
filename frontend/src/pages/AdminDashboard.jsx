@@ -138,7 +138,7 @@ const AdminDashboard = ({ onNavigate }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <Shield className="w-5 h-5 text-neon-orange" />
+            <Shield className="w-5 h-5 text-brand-400" />
             <h1 className="text-2xl font-bold text-white">Administrator Verification Console</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -160,7 +160,7 @@ const AdminDashboard = ({ onNavigate }) => {
           <GlassCard className="!p-4">
             <span className="text-[11px] font-mono text-slate-400 uppercase">Pending Approvals</span>
             <div className="flex items-center justify-between mt-2">
-              <span className="text-2xl font-bold text-neon-orange font-mono">{stats.pending_teachers}</span>
+              <span className="text-2xl font-bold text-brand-400 font-mono">{stats.pending_teachers}</span>
               <Badge variant="warning">Action Required</Badge>
             </div>
           </GlassCard>
@@ -177,7 +177,7 @@ const AdminDashboard = ({ onNavigate }) => {
             <span className="text-[11px] font-mono text-slate-400 uppercase">Total Classrooms</span>
             <div className="flex items-center justify-between mt-2">
               <span className="text-2xl font-bold text-slate-200 font-mono">{stats.total_classrooms}</span>
-              <BookOpen className="w-4 h-4 text-neon-amber" />
+              <BookOpen className="w-4 h-4 text-brand-300" />
             </div>
           </GlassCard>
 
@@ -203,7 +203,7 @@ const AdminDashboard = ({ onNavigate }) => {
               <button
                 key={tab}
                 onClick={() => setFilter(tab)}
-                className={`px-3 py-1 rounded-lg capitalize transition-all ${filter === tab ? 'bg-neon-orange text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
+                className={`px-3 py-1 rounded-lg capitalize transition-all ${filter === tab ? 'bg-brand-600 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}
               >
                 {tab}
               </button>
@@ -213,7 +213,7 @@ const AdminDashboard = ({ onNavigate }) => {
       >
         {loading ? (
           <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-            <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Fetching PostgreSQL database records...
+            <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Fetching PostgreSQL database records...
           </div>
         ) : teachers.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-500">
@@ -281,7 +281,7 @@ const AdminDashboard = ({ onNavigate }) => {
       {/* Reject Modal */}
       {rejectModalTeacher && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-rose-500/40 shadow-neon">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-rose-500/40 shadow-sm">
             <h3 className="text-base font-bold text-white mb-2">Reject Teacher Registration</h3>
             <p className="text-xs text-slate-300 mb-4">
               Are you sure you want to reject the application for <b className="text-rose-400">{rejectModalTeacher.name}</b>?

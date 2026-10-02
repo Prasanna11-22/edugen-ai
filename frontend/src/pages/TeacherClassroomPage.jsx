@@ -712,7 +712,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-neon-orange" />
+            <GraduationCap className="w-5 h-5 text-brand-400" />
             <h1 className="text-2xl font-bold text-white">Student Directory & Classroom Manager</h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -723,7 +723,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => { setModalClassroomId(''); setShowSingleModal(true); }}
-            className="btn-royal text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-neon"
+            className="btn-royal text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-sm"
           >
             <UserPlus className="w-4 h-4" /> Single Student
           </button>
@@ -739,7 +739,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
             onClick={() => setShowClassModal(true)}
             className="px-3.5 py-2.5 rounded-xl bg-dark-800 hover:bg-dark-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1.5"
           >
-            <Plus className="w-3.5 h-3.5 text-neon-orange" /> New Classroom
+            <Plus className="w-3.5 h-3.5 text-brand-400" /> New Classroom
           </button>
         </div>
       </div>
@@ -748,14 +748,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 flex-wrap">
         <button
           onClick={() => setActiveTab('students')}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'students' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'students' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
         >
           <Users className="w-4 h-4" /> Student Credentials Directory ({allStudents.length})
         </button>
 
         <button
           onClick={() => setActiveTab('classrooms')}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'classrooms' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'classrooms' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
         >
           <BookOpen className="w-4 h-4" /> Classrooms & Unique Join Codes ({classrooms.length})
         </button>
@@ -765,7 +765,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
             setActiveTab('telemetry');
             if (selectedClassId) fetchAssessmentTelemetry(selectedClassId);
           }}
-          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'telemetry' ? 'bg-neon-orange text-white shadow-neon-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${activeTab === 'telemetry' ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'}`}
         >
           <BarChart3 className="w-4 h-4" /> Assessment Results & Telemetry
         </button>
@@ -774,9 +774,9 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           onClick={() => setActiveTab('requests')}
           className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all ${
             activeTab === 'requests' 
-              ? 'bg-neon-orange text-white shadow-neon-sm' 
+              ? 'bg-brand-600 text-white shadow-sm' 
               : joinRequests.length > 0
-                ? 'text-amber-300 bg-amber-950/40 border border-amber-500/50 hover:bg-amber-900/50 shadow-neon-sm'
+                ? 'text-amber-300 bg-amber-950/40 border border-amber-500/50 hover:bg-amber-900/50 shadow-subtle'
                 : 'text-slate-400 hover:text-white bg-dark-900 border border-slate-800'
           }`}
         >
@@ -829,7 +829,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                          <Copy className="w-3.5 h-3.5 text-brand-400" />
                           <span>Copy All Logins</span>
                         </>
                       )}
@@ -850,12 +850,12 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           >
             {loadingStudents ? (
               <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Fetching student records...
+                <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Fetching student records...
               </div>
             ) : allStudents.length === 0 ? (
               <div className="text-center py-12 space-y-4">
                 <div className="w-12 h-12 rounded-2xl bg-dark-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
-                  <UserPlus className="w-6 h-6 text-neon-orange" />
+                  <UserPlus className="w-6 h-6 text-brand-400" />
                 </div>
                 <div>
                   <h4 className="text-sm font-semibold text-white">No Student Credentials Issued Yet</h4>
@@ -886,7 +886,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                       <th className="pb-3 font-semibold w-12 text-center">Rank</th>
                       <th className="pb-3 font-semibold">Student Name</th>
                       <th className="pb-3 font-semibold">Username / Email</th>
-                      <th className="pb-3 font-semibold text-neon-orange">Password</th>
+                      <th className="pb-3 font-semibold text-brand-400">Password</th>
                       <th className="pb-3 font-semibold">Enrolled Classrooms</th>
                       <th className="pb-3 font-semibold text-sky-400 min-w-[200px]">Student Progress</th>
                       <th className="pb-3 font-semibold text-right">Credentials Action</th>
@@ -919,8 +919,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           <td className="py-3.5 font-semibold text-white">{st.name}</td>
                           <td className="py-3.5 font-mono text-slate-300">{st.email}</td>
                           <td className="py-3.5 font-mono">
-                            <span className="font-mono text-xs font-bold text-neon-amber px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
-                              <Key className="w-3 h-3 text-neon-orange" />
+                            <span className="font-mono text-xs font-bold text-brand-300 px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                              <Key className="w-3 h-3 text-brand-400" />
                               {st.password || '••••••••'}
                             </span>
                           </td>
@@ -945,7 +945,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                     {st.latest_score >= 75 ? (
                                       <span className="text-emerald-400 font-bold">🏆 {st.latest_score}%</span>
                                     ) : st.latest_score >= 50 ? (
-                                      <span className="text-neon-amber font-bold">⚡ {st.latest_score}%</span>
+                                      <span className="text-brand-300 font-bold">⚡ {st.latest_score}%</span>
                                     ) : (
                                       <span className="text-rose-400 font-bold">🌱 {st.latest_score}%</span>
                                     )}
@@ -966,7 +966,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                       st.latest_score >= 75
                                         ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
                                         : st.latest_score >= 50
-                                          ? 'bg-gradient-to-r from-neon-orange to-neon-amber shadow-[0_0_10px_rgba(255,107,0,0.5)]'
+                                          ? 'bg-gradient-to-r from-brand-600 to-brand-500 shadow-[0_0_10px_rgba(255,107,0,0.5)]'
                                           : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.5)]'
                                     }`}
                                     style={{ width: `${Math.min(100, Math.max(5, st.latest_score))}%` }}
@@ -991,7 +991,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           <td className="py-3.5 text-right">
                             <button
                               onClick={() => copyToClipboard(`Username: ${st.email} | Password: ${st.password || ''}`, `usr_${st.id}`)}
-                              className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 border border-slate-700 hover:border-neon-orange text-[11px] text-slate-200 hover:text-white font-mono transition-all inline-flex items-center gap-1.5 shadow-sm"
+                              className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 border border-slate-700 hover:border-brand-500/50 text-[11px] text-slate-200 hover:text-white font-mono transition-all inline-flex items-center gap-1.5 shadow-sm"
                               title="Copy Username and Password"
                             >
                               {copiedKey === `usr_${st.id}` ? (
@@ -1000,7 +1000,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 </>
                               ) : (
                                 <>
-                                  <Copy className="w-3 h-3 text-neon-orange" /> Copy Login
+                                  <Copy className="w-3 h-3 text-brand-400" /> Copy Login
                                 </>
                               )}
                             </button>
@@ -1036,14 +1036,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
             <div className="space-y-6">
               
               {/* Classroom Switcher Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-neon-orange/30">
+              <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-slate-800">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-semibold text-slate-400 mr-2">Select Classroom Domain:</span>
                   {classrooms.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => setSelectedClassId(c.id)}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-neon-orange text-white shadow-neon-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-brand-600 text-white shadow-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
                     >
                       <span>{c.name} {c.subject ? `(${c.subject})` : ''}</span>
                       {c.pending_requests_count > 0 && (
@@ -1058,10 +1058,10 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                 {activeClass && (
                   <div className="flex items-center gap-3 bg-dark-950/80 p-2 rounded-xl border border-slate-800 text-xs">
                     <span className="text-slate-400 font-mono">Domain:</span>
-                    <span className="text-neon-orange font-bold text-xs">{activeClass.subject}</span>
+                    <span className="text-brand-400 font-bold text-xs">{activeClass.subject}</span>
                     <span className="text-slate-600">|</span>
                     <span className="text-slate-400 font-mono">Join Code:</span>
-                    <span className="text-neon-amber font-mono font-bold tracking-widest text-sm">{activeClass.join_code}</span>
+                    <span className="text-brand-300 font-mono font-bold tracking-widest text-sm">{activeClass.join_code}</span>
                     <button
                       onClick={() => copyToClipboard(activeClass.join_code, 'join_code')}
                       className="p-1 rounded text-slate-400 hover:text-white"
@@ -1075,7 +1075,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         setActiveTab('telemetry');
                         fetchAssessmentTelemetry(activeClass.id);
                       }}
-                      className="px-2 py-0.5 rounded text-neon-orange hover:text-white hover:bg-neon-orange/20 transition flex items-center gap-1 font-mono text-[11px]"
+                      className="px-2 py-0.5 rounded text-brand-400 hover:text-white hover:bg-brand-600/20 transition flex items-center gap-1 font-mono text-[11px]"
                       title="View Assessment Results & Telemetry"
                     >
                       <BarChart3 className="w-3.5 h-3.5" /> Telemetry
@@ -1094,7 +1094,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
               {/* Pending Join Requests Alert Banner for Active Class */}
               {activeClass && activeClass.pending_requests_count > 0 && (
-                <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-neon-sm animate-in fade-in">
+                <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-200 shadow-subtle animate-in fade-in">
                   <div className="flex items-center gap-2.5">
                     <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
                     <span>
@@ -1130,14 +1130,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                       className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition"
                       title="Log or Simulate Student Help Request"
                     >
-                      <Plus className="w-3.5 h-3.5 text-neon-orange" /> Log Help Request
+                      <Plus className="w-3.5 h-3.5 text-brand-400" /> Log Help Request
                     </button>
                   </div>
                 }
               >
                 {loadingSignals ? (
                   <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Aggregating struggle signals...
+                    <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Aggregating struggle signals...
                   </div>
                 ) : struggleSignals.signals.length === 0 && struggleSignals.general_requests_count === 0 ? (
                   <div className="py-6 text-center space-y-2">
@@ -1152,16 +1152,16 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                   <div className="space-y-4">
                     {/* Active Filter Reminder */}
                     {selectedObjectiveFilter !== null && (
-                      <div className="p-2.5 rounded-xl bg-neon-orange/15 border border-neon-orange/40 flex items-center justify-between text-xs text-slate-200">
+                      <div className="p-2.5 rounded-xl bg-brand-600/15 border border-slate-800 flex items-center justify-between text-xs text-slate-200">
                         <div className="flex items-center gap-2">
-                          <Filter className="w-3.5 h-3.5 text-neon-orange" />
+                          <Filter className="w-3.5 h-3.5 text-brand-400" />
                           <span>
-                            Filtering Student Requests Inbox below by Objective ID: <strong className="text-neon-glow font-mono">#{selectedObjectiveFilter}</strong>
+                            Filtering Student Requests Inbox below by Objective ID: <strong className="text-brand-200 font-mono">#{selectedObjectiveFilter}</strong>
                           </span>
                         </div>
                         <button
                           onClick={() => setSelectedObjectiveFilter(null)}
-                          className="text-[11px] font-mono text-neon-orange hover:text-white underline flex items-center gap-1 font-bold"
+                          className="text-[11px] font-mono text-brand-400 hover:text-white underline flex items-center gap-1 font-bold"
                         >
                           <X className="w-3.5 h-3.5" /> Clear Filter
                         </button>
@@ -1178,7 +1178,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                             onClick={() => handleSelectObjectiveFilter(sig.objective_id)}
                             className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                               isSelected
-                                ? 'bg-neon-orange/20 border-neon-orange ring-2 ring-neon-orange/50 shadow-neon-sm'
+                                ? 'bg-brand-600/20 border-brand-500/50 ring-2 ring-brand-500/30 shadow-subtle'
                                 : sig.has_warning
                                   ? 'bg-rose-950/25 border-rose-500/60 hover:border-rose-500 shadow-sm'
                                   : 'bg-dark-900/90 border-slate-800 hover:border-slate-700'
@@ -1195,7 +1195,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-bold text-white hover:text-neon-glow transition-colors">
+                                  <span className="text-xs font-bold text-white hover:text-brand-200 transition-colors">
                                     {sig.objective_text}
                                   </span>
                                   {sig.unit_title && (
@@ -1219,7 +1219,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                               <span className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
                                 sig.has_warning 
                                   ? 'bg-rose-950 text-rose-200 border border-rose-500/60' 
-                                  : 'bg-dark-950 text-neon-orange border border-slate-800'
+                                  : 'bg-dark-950 text-brand-400 border border-slate-800'
                               }`}>
                                 {sig.request_count} {sig.request_count === 1 ? 'Request' : 'Requests'}
                               </span>
@@ -1233,8 +1233,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     {struggleSignals.general_requests_count > 0 && (
                       <div className="p-3 rounded-xl bg-dark-950/80 border border-slate-800/80 flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2 text-slate-300">
-                          <HelpCircle className="w-4 h-4 text-neon-amber" />
-                          <span>General requests: <strong className="text-neon-amber font-mono text-sm">{struggleSignals.general_requests_count}</strong></span>
+                          <HelpCircle className="w-4 h-4 text-brand-300" />
+                          <span>General requests: <strong className="text-brand-300 font-mono text-sm">{struggleSignals.general_requests_count}</strong></span>
                         </div>
                         <span className="text-[11px] font-mono text-slate-500">Unassigned to specific objective</span>
                       </div>
@@ -1263,7 +1263,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           onClick={() => setRequestStatusFilter(tab.id)}
                           className={`px-2.5 py-1 rounded-lg font-semibold transition ${
                             requestStatusFilter === tab.id
-                              ? 'bg-neon-orange text-white'
+                              ? 'bg-brand-600 text-white'
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
@@ -1276,7 +1276,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               >
                 {loadingRequests ? (
                   <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading student requests...
+                    <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Loading student requests...
                   </div>
                 ) : studentRequests.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-500 space-y-2">
@@ -1284,7 +1284,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     {selectedObjectiveFilter && (
                       <button
                         onClick={() => setSelectedObjectiveFilter(null)}
-                        className="text-neon-orange underline font-semibold block mx-auto"
+                        className="text-brand-400 underline font-semibold block mx-auto"
                       >
                         Clear Objective Filter
                       </button>
@@ -1320,7 +1320,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
                         {req.objective_text && (
                           <div className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-dark-950 p-2 rounded-lg border border-slate-800">
-                            <Target className="w-3.5 h-3.5 text-neon-orange shrink-0" />
+                            <Target className="w-3.5 h-3.5 text-brand-400 shrink-0" />
                             <span>Tagged Objective: <strong className="text-white">{req.objective_text}</strong></span>
                           </div>
                         )}
@@ -1332,11 +1332,11 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
                         {/* Response Thread */}
                         {req.responses && req.responses.length > 0 && (
-                          <div className="space-y-2 pt-2 border-t border-slate-800/60 pl-3 border-l-2 border-neon-orange/40">
+                          <div className="space-y-2 pt-2 border-t border-slate-800/60 pl-3 border-l-2 border-slate-800">
                             {req.responses.map(resp => (
                               <div key={resp.id} className="text-xs space-y-1.5 bg-dark-950 p-2.5 rounded-lg border border-slate-800">
                                 <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                                  <span className="font-bold text-neon-orange">{resp.user_name} ({resp.user_role}):</span>
+                                  <span className="font-bold text-brand-400">{resp.user_name} ({resp.user_role}):</span>
                                   <span>{new Date(resp.created_at).toLocaleTimeString()}</span>
                                 </div>
                                 {resp.message && (
@@ -1349,11 +1349,11 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                     href={resp.file_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-slate-700 hover:border-neon-orange text-neon-orange hover:text-neon-amber transition text-xs font-mono group"
+                                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-slate-700 hover:border-brand-500/50 text-brand-400 hover:text-brand-300 transition text-xs font-mono group"
                                   >
-                                    <FileText className="w-3.5 h-3.5 text-neon-orange" />
+                                    <FileText className="w-3.5 h-3.5 text-brand-400" />
                                     <span className="font-semibold underline decoration-dotted">{resp.file_name || 'Download Attached PDF / Notes'}</span>
-                                    <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-neon-orange transition" />
+                                    <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-brand-400 transition" />
                                   </a>
                                 )}
                               </div>
@@ -1367,7 +1367,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                             {req.status !== 'in_progress' && req.status !== 'resolved' && req.status !== 'rejected' && (
                               <button
                                 onClick={() => handleUpdateRequestStatus(req.id, 'in_progress')}
-                                className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-neon-amber border border-slate-800 text-[11px] font-semibold transition"
+                                className="px-2.5 py-1 rounded-lg bg-dark-950 hover:bg-dark-850 text-brand-300 border border-slate-800 text-[11px] font-semibold transition"
                               >
                                 Mark In Progress
                               </button>
@@ -1459,7 +1459,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <div className="flex items-center gap-2">
                                 <label className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
-                                  <Paperclip className="w-3.5 h-3.5 text-neon-orange" />
+                                  <Paperclip className="w-3.5 h-3.5 text-brand-400" />
                                   <span>{replyFile ? 'Change File' : 'Attach PDF / Document'}</span>
                                   <input
                                     type="file"
@@ -1474,7 +1474,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 </label>
 
                                 {replyFile && (
-                                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-dark-900 border border-neon-orange/40 text-neon-orange text-[11px] font-mono">
+                                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-dark-900 border border-slate-800 text-brand-400 text-[11px] font-mono">
                                     <FileText className="w-3.5 h-3.5" />
                                     <span className="max-w-[180px] truncate">{replyFile.name}</span>
                                     <button
@@ -1522,7 +1522,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               >
                 {loadingAnalytics ? (
                   <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Computing objective alignment metrics...
+                    <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Computing objective alignment metrics...
                   </div>
                 ) : !analytics?.objective_alignment_map || analytics.objective_alignment_map.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-500">
@@ -1542,11 +1542,11 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         <div className="space-y-1">
                           <div className="flex items-center justify-between text-[11px] font-mono">
                             <span className="text-slate-400">Class Average Mastery</span>
-                            <span className="font-bold text-neon-orange">{item.average_mastery}%</span>
+                            <span className="font-bold text-brand-400">{item.average_mastery}%</span>
                           </div>
                           <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
                             <div
-                              className="h-full bg-gradient-to-r from-neon-orange to-neon-amber rounded-full shadow-neon-sm"
+                              className="h-full bg-gradient-to-r from-brand-600 to-brand-500 rounded-full shadow-subtle"
                               style={{ width: `${item.average_mastery}%` }}
                             />
                           </div>
@@ -1586,7 +1586,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
               >
                 {!sortedEnrolledStudents || sortedEnrolledStudents.length === 0 ? (
                   <div className="py-8 text-center text-xs text-slate-500">
-                    No students have joined this classroom yet. Share Join Code: <b className="text-neon-amber font-mono">{activeClass?.join_code}</b>
+                    No students have joined this classroom yet. Share Join Code: <b className="text-brand-300 font-mono">{activeClass?.join_code}</b>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
@@ -1596,7 +1596,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           <th className="pb-3 font-semibold w-12 text-center">Rank</th>
                           <th className="pb-3 font-semibold">Student Name</th>
                           <th className="pb-3 font-semibold">Username / Email</th>
-                          <th className="pb-3 font-semibold text-neon-orange">Password</th>
+                          <th className="pb-3 font-semibold text-brand-400">Password</th>
                           <th className="pb-3 font-semibold">Assessments Completed</th>
                           <th className="pb-3 font-semibold text-sky-400 min-w-[220px]">Student Progress</th>
                           <th className="pb-3 font-semibold text-right">Joined Date</th>
@@ -1629,8 +1629,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                               <td className="py-3.5 font-semibold text-white">{st.name}</td>
                               <td className="py-3.5 font-mono text-slate-300">{st.email}</td>
                               <td className="py-3.5 font-mono">
-                                <span className="font-mono text-xs font-bold text-neon-amber px-2 py-0.5 rounded bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
-                                  <Key className="w-3 h-3 text-neon-orange" />
+                                <span className="font-mono text-xs font-bold text-brand-300 px-2 py-0.5 rounded bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                                  <Key className="w-3 h-3 text-brand-400" />
                                   {st.password || '••••••••'}
                                 </span>
                               </td>
@@ -1647,7 +1647,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                         {st.latest_score >= 75 ? (
                                           <span className="text-emerald-400 font-bold">🏆 {st.latest_score}%</span>
                                         ) : st.latest_score >= 50 ? (
-                                          <span className="text-neon-amber font-bold">⚡ {st.latest_score}%</span>
+                                          <span className="text-brand-300 font-bold">⚡ {st.latest_score}%</span>
                                         ) : (
                                           <span className="text-rose-400 font-bold">🌱 {st.latest_score}%</span>
                                         )}
@@ -1670,7 +1670,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                           st.latest_score >= 75
                                             ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_10px_rgba(16,185,129,0.5)]'
                                             : st.latest_score >= 50
-                                              ? 'bg-gradient-to-r from-neon-orange to-neon-amber shadow-[0_0_10px_rgba(255,107,0,0.5)]'
+                                              ? 'bg-gradient-to-r from-brand-600 to-brand-500 shadow-[0_0_10px_rgba(255,107,0,0.5)]'
                                               : 'bg-gradient-to-r from-rose-600 to-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.5)]'
                                         }`}
                                         style={{ width: `${Math.min(100, Math.max(5, st.latest_score))}%` }}
@@ -1742,7 +1742,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
           >
             {loadingJoinRequests ? (
               <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" /> Loading join permission requests...
+                <RefreshCw className="w-4 h-4 animate-spin text-brand-400" /> Loading join permission requests...
               </div>
             ) : joinRequests.length === 0 ? (
               <div className="py-12 text-center space-y-3">
@@ -1778,10 +1778,10 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           </td>
                           <td className="py-3.5">
                             <div className="font-semibold text-slate-200">{req.classroom_name}</div>
-                            <div className="text-[11px] text-neon-orange font-mono">{req.classroom_subject}</div>
+                            <div className="text-[11px] text-brand-400 font-mono">{req.classroom_subject}</div>
                           </td>
                           <td className="py-3.5">
-                            <span className="px-2 py-0.5 rounded bg-dark-950 border border-slate-800 font-mono text-neon-amber font-bold text-xs tracking-wider">
+                            <span className="px-2 py-0.5 rounded bg-dark-950 border border-slate-800 font-mono text-brand-300 font-bold text-xs tracking-wider">
                               {req.join_code}
                             </span>
                           </td>
@@ -1827,7 +1827,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
         <div className="space-y-6 animate-in fade-in">
           
           {/* Classroom Domain Selector */}
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-neon-orange/30">
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-2xl glass-panel border border-slate-800">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-400 mr-2">Select Classroom Domain:</span>
               {classrooms.map((c) => (
@@ -1837,7 +1837,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     setSelectedClassId(c.id);
                     fetchAssessmentTelemetry(c.id);
                   }}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-neon-orange text-white shadow-neon-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${selectedClassId === c.id ? 'bg-brand-600 text-white shadow-sm' : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'}`}
                 >
                   <span>{c.name} {c.subject ? `(${c.subject})` : ''}</span>
                 </button>
@@ -1847,13 +1847,13 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
             {activeClass && (
               <div className="flex items-center gap-3 bg-dark-950/80 p-2 rounded-xl border border-slate-800 text-xs">
                 <span className="text-slate-400 font-mono">Join Code:</span>
-                <span className="text-neon-amber font-mono font-bold tracking-widest text-sm">{activeClass.join_code}</span>
+                <span className="text-brand-300 font-mono font-bold tracking-widest text-sm">{activeClass.join_code}</span>
                 <button
                   onClick={() => fetchAssessmentTelemetry(activeClass.id)}
                   className="p-1 rounded text-slate-400 hover:text-white flex items-center gap-1 text-[11px] font-mono ml-2"
                   title="Refresh Telemetry"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingTelemetry ? 'animate-spin text-neon-orange' : ''}`} /> Refresh
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingTelemetry ? 'animate-spin text-brand-400' : ''}`} /> Refresh
                 </button>
               </div>
             )}
@@ -1861,7 +1861,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
           {loadingTelemetry ? (
             <GlassCard className="py-12 text-center">
-              <RefreshCw className="w-8 h-8 animate-spin text-neon-orange mx-auto mb-3" />
+              <RefreshCw className="w-8 h-8 animate-spin text-brand-400 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-white">Aggregating Assessment Telemetry & Diagnostics...</h3>
               <p className="text-xs text-slate-400 mt-1">Computing question accuracy, option distributions, and participation metrics</p>
             </GlassCard>
@@ -1944,7 +1944,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
                       <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center">
                         <span className="text-[10px] font-mono text-slate-400 block uppercase">Class Average</span>
-                        <span className="text-lg font-bold text-neon-orange font-mono">
+                        <span className="text-lg font-bold text-brand-400 font-mono">
                           {telemetryData.performance.average_score}%
                         </span>
                       </div>
@@ -1986,7 +1986,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                       onClick={expandAllQuestions}
                       className="px-3 py-1.5 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1 transition"
                     >
-                      <ChevronDown className="w-3.5 h-3.5 text-neon-orange" /> Expand All
+                      <ChevronDown className="w-3.5 h-3.5 text-brand-400" /> Expand All
                     </button>
                     <button
                       onClick={collapseAllQuestions}
@@ -2010,7 +2010,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           key={q.question_id}
                           className={`rounded-2xl border transition-all duration-200 overflow-hidden ${
                             isExpanded
-                              ? 'bg-dark-900/95 border-neon-orange/60 ring-1 ring-neon-orange/30 shadow-neon-sm'
+                              ? 'bg-dark-900/95 border-brand-500/40 ring-1 ring-brand-500/20 shadow-subtle'
                               : 'bg-dark-900/70 border-slate-800 hover:border-slate-700'
                           }`}
                         >
@@ -2023,7 +2023,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                               <span className={`w-8 h-8 rounded-xl font-mono font-bold text-xs flex items-center justify-center shrink-0 shadow-sm ${
                                 q.struggle_flag
                                   ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50'
-                                  : 'bg-neon-orange/20 text-neon-orange border border-neon-orange/40'
+                                  : 'bg-brand-600/20 text-brand-400 border border-slate-800'
                               }`}>
                                 Q{q.item_number}
                               </span>
@@ -2065,11 +2065,11 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                               </div>
 
                               <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-dark-950 border border-slate-800 text-xs font-mono text-slate-300">
-                                <span className="text-[11px] font-bold text-neon-orange">
+                                <span className="text-[11px] font-bold text-brand-400">
                                   {isExpanded ? 'Collapse' : 'Expand'}
                                 </span>
                                 {isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-neon-orange" />
+                                  <ChevronUp className="w-4 h-4 text-brand-400" />
                                 ) : (
                                   <ChevronDown className="w-4 h-4 text-slate-400" />
                                 )}
@@ -2175,7 +2175,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                               {/* Pedagogical Rationale & Explanation */}
                               {q.rationale && (
                                 <div className="p-4 rounded-xl bg-dark-900 border border-slate-800 space-y-1.5">
-                                  <div className="flex items-center gap-2 text-xs font-bold text-neon-orange">
+                                  <div className="flex items-center gap-2 text-xs font-bold text-brand-400">
                                     <Sparkles className="w-4 h-4" /> Pedagogical Rationale & Diagnostic Note
                                   </div>
                                   <p className="text-xs text-slate-300 leading-relaxed font-sans">
@@ -2245,7 +2245,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         onClick={() => setTelemetryRosterFilter(tab.id)}
                         className={`px-3 py-1 rounded-lg font-semibold transition ${
                           telemetryRosterFilter === tab.id
-                            ? 'bg-neon-orange text-white'
+                            ? 'bg-brand-600 text-white'
                             : 'text-slate-400 hover:text-white'
                         }`}
                       >
@@ -2331,7 +2331,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                                 {st.has_submitted ? (
                                   <button
                                     onClick={() => setInspectingStudent(st)}
-                                    className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-neon-orange hover:text-white border border-slate-700 hover:border-neon-orange text-[11px] font-mono flex items-center gap-1 ml-auto shadow-sm transition"
+                                    className="px-2.5 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-brand-400 hover:text-white border border-slate-700 hover:border-brand-500/50 text-[11px] font-mono flex items-center gap-1 ml-auto shadow-sm transition"
                                   >
                                     <Eye className="w-3.5 h-3.5" /> Inspect Answers
                                   </button>
@@ -2357,14 +2357,14 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* INSPECT STUDENT SUBMISSION MODAL */}
       {inspectingStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon space-y-4">
+          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Eye className="w-5 h-5 text-neon-orange" /> Diagnostic Submission: {inspectingStudent.student_name}
+                  <Eye className="w-5 h-5 text-brand-400" /> Diagnostic Submission: {inspectingStudent.student_name}
                 </h3>
                 <p className="text-xs text-slate-400 font-mono mt-0.5">
-                  {inspectingStudent.student_email} • Score: <strong className="text-neon-orange">{inspectingStudent.score}%</strong> ({inspectingStudent.mastery_signal})
+                  {inspectingStudent.student_email} • Score: <strong className="text-brand-400">{inspectingStudent.score}%</strong> ({inspectingStudent.mastery_signal})
                 </p>
               </div>
               <button
@@ -2416,7 +2416,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
 
                     {q.rationale && (
                       <p className="text-[11px] text-slate-300 bg-dark-950/80 p-2.5 rounded-lg border border-slate-800/80 leading-relaxed font-sans">
-                        <strong className="text-neon-orange font-mono">Rationale:</strong> {q.rationale}
+                        <strong className="text-brand-400 font-mono">Rationale:</strong> {q.rationale}
                       </p>
                     )}
                   </div>
@@ -2439,9 +2439,9 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* CREATE CLASSROOM MODAL */}
       {showClassModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm">
             <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <FolderPlus className="w-5 h-5 text-neon-orange" /> Create New Classroom
+              <FolderPlus className="w-5 h-5 text-brand-400" /> Create New Classroom
             </h3>
             <p className="text-xs text-slate-300 mb-4">
               A 6-character uppercase unique join code will be generated automatically for students to join.
@@ -2496,9 +2496,9 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* SINGLE STUDENT CREATION MODAL */}
       {showSingleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm">
             <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-neon-orange" /> Create Student Account
+              <UserPlus className="w-5 h-5 text-brand-400" /> Create Student Account
             </h3>
             <p className="text-xs text-slate-300 mb-4">
               Student credentials will be created immediately with unique login keys.
@@ -2512,7 +2512,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                 <div className="text-xs space-y-1 font-mono text-slate-300 bg-dark-950 p-2.5 rounded border border-slate-800">
                   <div>Name: <b className="text-white">{createdStudent.name}</b></div>
                   <div>Username: <b className="text-white">{createdStudent.email}</b></div>
-                  <div>Password: <b className="text-neon-amber font-bold">{createdStudent.temporary_password}</b></div>
+                  <div>Password: <b className="text-brand-300 font-bold">{createdStudent.temporary_password}</b></div>
                 </div>
                 <div className="flex items-center gap-2 pt-2">
                   <button
@@ -2614,10 +2614,10 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* BULK STUDENT CREATION MODAL */}
       {showBulkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-xl rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
+          <div className="w-full max-w-xl rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Upload className="w-5 h-5 text-neon-orange" /> Bulk Student Account Generator
+                <Upload className="w-5 h-5 text-brand-400" /> Bulk Student Account Generator
               </h3>
               <button
                 onClick={() => { setBulkCreatedStudents([]); setShowBulkModal(false); }}
@@ -2653,7 +2653,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                          <Copy className="w-3.5 h-3.5 text-brand-400" />
                           <span>Copy All</span>
                         </>
                       )}
@@ -2678,8 +2678,8 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                         <div className="font-mono text-[11px] text-slate-400 truncate">{st.email}</div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-neon-amber px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
-                          <Key className="w-3 h-3 text-neon-orange" />
+                        <span className="font-mono text-xs font-bold text-brand-300 px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-700/80 inline-flex items-center gap-1.5 shadow-sm select-all">
+                          <Key className="w-3 h-3 text-brand-400" />
                           {st.password}
                         </span>
                         <button
@@ -2691,7 +2691,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                           {copiedKey === `bulk_${i}` ? (
                             <Check className="w-3.5 h-3.5 text-emerald-400" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5 text-neon-orange" />
+                            <Copy className="w-3.5 h-3.5 text-brand-400" />
                           )}
                         </button>
                       </div>
@@ -2721,7 +2721,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-semibold text-slate-300">Names & Emails (One per line)</label>
-                    <label className="cursor-pointer text-[11px] text-neon-orange hover:text-neon-orange/80 flex items-center gap-1 font-semibold transition-colors">
+                    <label className="cursor-pointer text-[11px] text-brand-400 hover:text-brand-400/80 flex items-center gap-1 font-semibold transition-colors">
                       <Upload className="w-3.5 h-3.5" /> Upload .csv file
                       <input
                         type="file"
@@ -2737,7 +2737,7 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
                     placeholder={`Ananya Sen, ananya@school.edu\nDev Kumar, dev@school.edu\nMeera Nair, meera@school.edu\nRohan Sharma, rohan.sharma@school.edu`}
                     rows={6}
                     required
-                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none focus:border-neon-orange"
+                    className="w-full rounded-xl glass-input p-3 text-xs font-mono resize-none focus:border-brand-500/50"
                   />
                   <span className="text-[11px] text-slate-400 block mt-1">
                     Accepts comma separated, tab-separated, or CSV files. Auto-generates unique password per student.
@@ -2792,10 +2792,10 @@ const TeacherClassroomPage = ({ classroomId, onBack }) => {
       {/* LOG STUDENT HELP REQUEST MODAL */}
       {showNewRequestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon space-y-4">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <HelpCircle className="w-5 h-5 text-neon-orange" /> Log Student Help Request
+                <HelpCircle className="w-5 h-5 text-brand-400" /> Log Student Help Request
               </h3>
               <button onClick={() => setShowNewRequestModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />

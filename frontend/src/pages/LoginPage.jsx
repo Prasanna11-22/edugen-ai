@@ -188,7 +188,7 @@ const LoginPage = ({ onNavigate }) => {
       
       {/* Brand Header */}
       <div className="text-center mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange p-1.5 shadow-neon mx-auto mb-4 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-700 to-brand-600 p-1.5 shadow-sm mx-auto mb-4 flex items-center justify-center">
           <RetrievoIcon className="w-10 h-10 drop-shadow-md" />
         </div>
         <h2 className="text-2xl font-bold text-white">Sign In to Retrievo</h2>
@@ -196,7 +196,7 @@ const LoginPage = ({ onNavigate }) => {
       </div>
 
       {/* Main Glass Form */}
-      <div className="rounded-3xl glass-panel-accent p-8 border border-neon-orange/30 shadow-neon">
+      <div className="rounded-3xl glass-panel-accent p-8 border border-slate-800 shadow-sm">
         
         {error && (
           <div className="mb-5 p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-start gap-2.5 animate-in fade-in">
@@ -233,7 +233,7 @@ const LoginPage = ({ onNavigate }) => {
                   setForgotSuccess('');
                   setShowForgotModal(true);
                 }}
-                className="text-[11px] text-neon-orange hover:text-neon-amber transition-colors font-medium hover:underline"
+                className="text-[11px] text-brand-400 hover:text-brand-300 transition-colors font-medium hover:underline"
               >
                 Forgot Password?
               </button>
@@ -255,7 +255,7 @@ const LoginPage = ({ onNavigate }) => {
                 title={showPassword ? "Hide password" : "Show password"}
               >
                 {showPassword ? (
-                  <EyeOff className="w-4 h-4 text-neon-orange" />
+                  <EyeOff className="w-4 h-4 text-brand-400" />
                 ) : (
                   <Eye className="w-4 h-4" />
                 )}
@@ -266,7 +266,7 @@ const LoginPage = ({ onNavigate }) => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full btn-royal text-xs py-3 mt-2 flex items-center justify-center gap-2 shadow-neon"
+            className="w-full btn-royal text-xs py-3 mt-2 flex items-center justify-center gap-2 shadow-sm"
           >
             {loading ? (
               <>
@@ -285,7 +285,7 @@ const LoginPage = ({ onNavigate }) => {
             Are you a new educator?{' '}
             <button
               onClick={() => onNavigate('teacher_signup')}
-              className="text-neon-orange hover:text-neon-amber font-semibold ml-1 underline decoration-neon-orange/40"
+              className="text-brand-400 hover:text-brand-300 font-semibold ml-1 underline decoration-neon-orange/40"
             >
               Submit Teacher Registration
             </button>
@@ -296,13 +296,13 @@ const LoginPage = ({ onNavigate }) => {
       {/* FORGOT PASSWORD MODAL */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-2xl relative space-y-5 bg-dark-900/95 overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-neon-orange via-neon-amber to-neon-gold" />
+          <div className="w-full max-w-md rounded-3xl glass-panel-accent p-6 sm:p-8 border border-slate-800 shadow-2xl relative space-y-5 bg-dark-900/95 overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-600 via-brand-500 to-neon-gold" />
             
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                <div className="w-8 h-8 rounded-xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400">
                   <Key className="w-4 h-4" />
                 </div>
                 <div>
@@ -331,7 +331,7 @@ const LoginPage = ({ onNavigate }) => {
             {forgotStep === 1 && (
               <form onSubmit={handleSendOtp} className="space-y-4">
                 <p className="text-xs text-slate-300 leading-relaxed">
-                  Enter your registered email address. We will verify your account and send a 6-digit verification code (OTP) from <strong className="text-neon-orange font-mono text-[11px]">lessonfoundrykce@gmail.com</strong>.
+                  Enter your registered email address. We will verify your account and send a 6-digit verification code (OTP) from <strong className="text-brand-400 font-mono text-[11px]">lessonfoundrykce@gmail.com</strong>.
                 </p>
 
                 <div>
@@ -361,7 +361,7 @@ const LoginPage = ({ onNavigate }) => {
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="btn-royal text-xs py-2.5 px-5 flex items-center gap-1.5 shadow-neon"
+                    className="btn-royal text-xs py-2.5 px-5 flex items-center gap-1.5 shadow-sm"
                   >
                     {forgotLoading ? (
                       <>
@@ -382,12 +382,12 @@ const LoginPage = ({ onNavigate }) => {
             {/* STEP 2: OTP Verification */}
             {forgotStep === 2 && (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="p-3 rounded-xl bg-neon-orange/10 border border-neon-orange/30 text-xs text-slate-300 space-y-1">
-                  <p className="text-neon-glow font-semibold flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-neon-orange" /> Code Dispatched!
+                <div className="p-3 rounded-xl bg-brand-600/10 border border-slate-800 text-xs text-slate-300 space-y-1">
+                  <p className="text-brand-200 font-semibold flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-brand-400" /> Code Dispatched!
                   </p>
                   <p className="text-[11px] text-slate-400">
-                    We sent a 6-digit OTP from <strong className="text-white">lessonfoundrykce@gmail.com</strong> to <strong className="text-neon-amber">{forgotEmail}</strong>.
+                    We sent a 6-digit OTP from <strong className="text-white">lessonfoundrykce@gmail.com</strong> to <strong className="text-brand-300">{forgotEmail}</strong>.
                   </p>
                 </div>
 
@@ -401,7 +401,7 @@ const LoginPage = ({ onNavigate }) => {
                     placeholder="123456"
                     required
                     autoFocus
-                    className="w-full py-3 px-4 rounded-xl glass-input text-center font-mono text-xl font-bold tracking-[0.4em] text-white border-neon-orange/50 focus:border-neon-orange"
+                    className="w-full py-3 px-4 rounded-xl glass-input text-center font-mono text-xl font-bold tracking-[0.4em] text-white border-brand-500/30 focus:border-brand-500/50"
                   />
                 </div>
 
@@ -414,7 +414,7 @@ const LoginPage = ({ onNavigate }) => {
                       type="button"
                       onClick={handleSendOtp}
                       disabled={forgotLoading}
-                      className="text-neon-orange hover:text-neon-amber font-semibold text-[11px]"
+                      className="text-brand-400 hover:text-brand-300 font-semibold text-[11px]"
                     >
                       Resend OTP Code
                     </button>
@@ -432,7 +432,7 @@ const LoginPage = ({ onNavigate }) => {
                   <button
                     type="submit"
                     disabled={forgotLoading || otp.length < 6}
-                    className="btn-royal text-xs py-2.5 px-5 flex items-center gap-1.5 shadow-neon disabled:opacity-50"
+                    className="btn-royal text-xs py-2.5 px-5 flex items-center gap-1.5 shadow-sm disabled:opacity-50"
                   >
                     {forgotLoading ? (
                       <>
@@ -454,7 +454,7 @@ const LoginPage = ({ onNavigate }) => {
             {forgotStep === 3 && (
               <form onSubmit={handleResetPassword} className="space-y-4">
                 <p className="text-xs text-slate-300">
-                  OTP verification successful for <strong className="text-neon-orange">{forgotEmail}</strong>. Please set your new password below.
+                  OTP verification successful for <strong className="text-brand-400">{forgotEmail}</strong>. Please set your new password below.
                 </p>
 
                 <div>
@@ -475,7 +475,7 @@ const LoginPage = ({ onNavigate }) => {
                       onClick={() => setShowNewPassword(!showNewPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors p-1"
                     >
-                      {showNewPassword ? <EyeOff className="w-4 h-4 text-neon-orange" /> : <Eye className="w-4 h-4" />}
+                      {showNewPassword ? <EyeOff className="w-4 h-4 text-brand-400" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -497,7 +497,7 @@ const LoginPage = ({ onNavigate }) => {
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors p-1"
                     >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4 text-neon-orange" /> : <Eye className="w-4 h-4" />}
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4 text-brand-400" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -506,7 +506,7 @@ const LoginPage = ({ onNavigate }) => {
                   <button
                     type="submit"
                     disabled={forgotLoading}
-                    className="w-full btn-royal text-xs py-3 flex items-center justify-center gap-1.5 shadow-neon"
+                    className="w-full btn-royal text-xs py-3 flex items-center justify-center gap-1.5 shadow-sm"
                   >
                     {forgotLoading ? (
                       <>
@@ -534,14 +534,14 @@ const LoginPage = ({ onNavigate }) => {
                 <div className="space-y-1.5">
                   <h4 className="text-base font-bold text-white">Password Updated Successfully!</h4>
                   <p className="text-xs text-slate-300 max-w-xs mx-auto">
-                    Your password for <span className="text-neon-orange font-mono">{forgotEmail}</span> has been updated. You can now sign in with your new credentials.
+                    Your password for <span className="text-brand-400 font-mono">{forgotEmail}</span> has been updated. You can now sign in with your new credentials.
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={closeForgotModal}
-                  className="w-full btn-royal text-xs py-3 mt-2 flex items-center justify-center gap-2 shadow-neon"
+                  className="w-full btn-royal text-xs py-3 mt-2 flex items-center justify-center gap-2 shadow-sm"
                 >
                   <span>Continue to Sign In</span>
                   <ArrowRight className="w-4 h-4" />

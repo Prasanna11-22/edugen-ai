@@ -103,10 +103,10 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300">
       
       {/* Ambient background glow orbs */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-neon-orange/15 rounded-full blur-3xl pointer-events-none animate-pulse-glow" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-600/15 rounded-full blur-3xl pointer-events-none animate-pulse-glow" />
       <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-neon-amber/10 rounded-full blur-3xl pointer-events-none animate-pulse-glow" style={{ animationDelay: '1s' }} />
 
-      <div className="relative w-full max-w-2xl rounded-3xl glass-panel-accent border border-neon-orange/50 shadow-2xl p-6 sm:p-8 overflow-hidden bg-dark-950/95 space-y-6">
+      <div className="relative w-full max-w-2xl rounded-3xl glass-panel-accent border border-brand-500/30 shadow-2xl p-6 sm:p-8 overflow-hidden bg-dark-950/95 space-y-6">
         
         {/* Animated Top Header & Multi-Ring Reactor */}
         <div className="flex flex-col sm:flex-row items-center gap-5 pb-4 border-b border-slate-800/90 text-center sm:text-left">
@@ -114,24 +114,24 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
           {/* Futuristic Double-Ring Pulsating Reactor */}
           <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
             {/* Outer spinning dashed ring */}
-            <div className="absolute inset-0 rounded-full border-2 border-dashed border-neon-orange/40 animate-spin-slow" />
+            <div className="absolute inset-0 rounded-full border-2 border-dashed border-slate-800 animate-spin-slow" />
             {/* Middle counter-spinning ring */}
             <div className="absolute inset-1.5 rounded-full border border-neon-amber/50 animate-spin-reverse-slow" />
             {/* Inner glowing pulse aura */}
-            <div className="absolute inset-3 rounded-2xl bg-neon-orange/20 animate-pulse-glow blur-sm" />
+            <div className="absolute inset-3 rounded-2xl bg-brand-600/20 animate-pulse-glow blur-sm" />
             {/* Center icon */}
-            <div className="relative z-10 w-12 h-12 rounded-2xl bg-dark-900 border border-neon-orange/60 flex items-center justify-center text-neon-orange shadow-neon-sm animate-float">
-              <Sparkles className="w-6 h-6 text-neon-glow" />
+            <div className="relative z-10 w-12 h-12 rounded-2xl bg-dark-900 border border-brand-500/40 flex items-center justify-center text-brand-400 shadow-subtle animate-float">
+              <Sparkles className="w-6 h-6 text-brand-200" />
             </div>
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-neon-orange/15 border border-neon-orange/40 text-neon-glow mb-2">
-              <span className="w-2 h-2 rounded-full bg-neon-orange animate-ping" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-mono font-bold bg-brand-600/15 border border-slate-800 text-brand-200 mb-2">
+              <span className="w-2 h-2 rounded-full bg-brand-600 animate-ping" />
               AI SYNTHESIS IN PROGRESS
             </div>
             <h2 className="text-lg sm:text-xl font-extrabold text-white tracking-tight">
-              Generating Lesson: <span className="text-neon-glow">{unitTitle || 'Curriculum Pack'}</span>
+              Generating Lesson: <span className="text-brand-200">{unitTitle || 'Curriculum Pack'}</span>
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-mono">
               {sourceTitle ? `Knowledge Source: "${sourceTitle}" • ` : ''}{objectivesCount} Objective{objectivesCount > 1 ? 's' : ''} Targeted
@@ -143,15 +143,15 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-mono">
             <span className="text-slate-300 font-semibold flex items-center gap-2">
-              <RefreshCw className="w-3.5 h-3.5 text-neon-orange animate-spin" />
+              <RefreshCw className="w-3.5 h-3.5 text-brand-400 animate-spin" />
               {GENERATION_STEPS[activeStepIdx]?.title}
             </span>
-            <span className="text-neon-orange font-bold font-mono text-sm">{progressPercent}%</span>
+            <span className="text-brand-400 font-bold font-mono text-sm">{progressPercent}%</span>
           </div>
 
           <div className="w-full h-3 rounded-full bg-dark-900 border border-slate-800 p-0.5 overflow-hidden shadow-inner">
             <div 
-              className="h-full rounded-full animate-shimmer transition-all duration-500 ease-out shadow-neon-sm"
+              className="h-full rounded-full animate-shimmer transition-all duration-500 ease-out shadow-subtle"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -170,7 +170,7 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
                 key={step.id}
                 className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                   isCurrent
-                    ? 'bg-neon-orange/10 border-neon-orange/60 shadow-neon-sm translate-x-1'
+                    ? 'bg-brand-600/10 border-brand-500/40 shadow-subtle translate-x-1'
                     : isCompleted
                     ? 'bg-dark-900/90 border-emerald-500/30 text-slate-300'
                     : 'bg-dark-950/60 border-slate-800/60 text-slate-500 opacity-60'
@@ -179,7 +179,7 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
                     isCurrent
-                      ? 'bg-neon-orange text-white border-neon-orange shadow-sm animate-pulse'
+                      ? 'bg-brand-600 text-white border-brand-500/50 shadow-sm animate-pulse'
                       : isCompleted
                       ? 'bg-emerald-950 text-emerald-400 border-emerald-500/40'
                       : 'bg-dark-900 text-slate-600 border-slate-800'
@@ -208,8 +208,8 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
 
                 <div className="shrink-0 text-right font-mono text-[11px]">
                   {isCurrent && (
-                    <span className="inline-flex items-center gap-1 text-neon-orange font-bold animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-neon-orange animate-ping" /> Working...
+                    <span className="inline-flex items-center gap-1 text-brand-400 font-bold animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-ping" /> Working...
                     </span>
                   )}
                   {isCompleted && (
@@ -228,8 +228,8 @@ const GenerationLoadingModal = ({ isOpen, unitTitle = 'Curriculum Lesson', sourc
 
         {/* Live Terminal Telemetry Output Box */}
         <div className="p-3 rounded-2xl bg-dark-950 border border-slate-800/90 flex items-center gap-2.5 font-mono text-[11px] text-slate-400 shadow-inner overflow-hidden">
-          <div className="w-2 h-2 rounded-full bg-neon-orange shrink-0 animate-ping" />
-          <span className="text-neon-amber shrink-0 font-bold">[ENGINE]</span>
+          <div className="w-2 h-2 rounded-full bg-brand-600 shrink-0 animate-ping" />
+          <span className="text-brand-300 shrink-0 font-bold">[ENGINE]</span>
           <span className="text-slate-300 truncate font-mono">
             {TELEMETRY_LOGS[logIndex]}
           </span>

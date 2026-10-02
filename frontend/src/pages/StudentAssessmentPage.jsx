@@ -458,7 +458,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
             <div className="space-y-4 pt-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <CheckSquare className="w-4 h-4 text-neon-orange" /> Question Evaluation & Solution Review
+                  <CheckSquare className="w-4 h-4 text-brand-400" /> Question Evaluation & Solution Review
                 </h3>
                 <span className="text-xs font-mono text-slate-400">
                   <strong className="text-emerald-400">{result.correct_answers || 0}</strong> of <strong className="text-white">{result.total_questions || result.question_evaluations.length}</strong> Correct
@@ -540,7 +540,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
                     {/* Rationale */}
                     {ev.rationale && (
                       <div className="ml-8 p-3 rounded-xl bg-dark-950 border border-slate-800 text-xs text-slate-300 space-y-1">
-                        <strong className="text-neon-orange font-mono text-[11px] block">Explanation & Rationale:</strong>
+                        <strong className="text-brand-400 font-mono text-[11px] block">Explanation & Rationale:</strong>
                         <p className="leading-relaxed">{ev.rationale}</p>
                       </div>
                     )}
@@ -553,7 +553,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           <div className="flex items-center justify-center gap-4 pt-6 border-t border-slate-800">
             <button
               onClick={onBack}
-              className="btn-royal text-xs px-8 py-3.5 shadow-neon flex items-center gap-2 font-bold"
+              className="btn-royal text-xs px-8 py-3.5 shadow-sm flex items-center gap-2 font-bold"
             >
               <ArrowLeft className="w-4 h-4" /> Return to Student Dashboard
             </button>
@@ -567,7 +567,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
   if (isDisqualified) {
     return (
       <div className="fixed inset-0 z-50 bg-dark-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-lg w-full p-8 rounded-3xl glass-panel text-center space-y-5 border border-rose-500/50 shadow-neon animate-in zoom-in-95">
+        <div className="max-w-lg w-full p-8 rounded-3xl glass-panel text-center space-y-5 border border-rose-500/50 shadow-sm animate-in zoom-in-95">
           <div className="w-16 h-16 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
             <ShieldAlert className="w-10 h-10 animate-pulse" />
           </div>
@@ -591,7 +591,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
             <div className="grid grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
               <div className="p-2 rounded-xl bg-dark-950 border border-slate-800 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-slate-300">
-                  <Users className="w-3.5 h-3.5 text-neon-orange" /> Multi-Person:
+                  <Users className="w-3.5 h-3.5 text-brand-400" /> Multi-Person:
                 </span>
                 <span className="font-bold text-white">{violationStats.multiple_persons} (×{WEIGHT_MULTIPLE_PERSONS})</span>
               </div>
@@ -635,7 +635,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               }
               onBack();
             }}
-            className="btn-royal text-xs px-6 py-3.5 w-full shadow-neon font-bold flex items-center justify-center gap-2"
+            className="btn-royal text-xs px-6 py-3.5 w-full shadow-sm font-bold flex items-center justify-center gap-2"
           >
             <RotateCcw className="w-4 h-4" /> Return to Dashboard & Reattempt
           </button>
@@ -648,7 +648,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
   if (!assignment?.can_attempt) {
     return (
       <div className="fixed inset-0 z-50 bg-dark-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 rounded-3xl glass-panel text-center space-y-4 border border-rose-500/40 shadow-neon">
+        <div className="max-w-md w-full p-8 rounded-3xl glass-panel text-center space-y-4 border border-rose-500/40 shadow-sm">
           <div className="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center mx-auto text-rose-400">
             <AlertTriangle className="w-8 h-8" />
           </div>
@@ -658,7 +658,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           </p>
           <button
             onClick={onBack}
-            className="btn-royal text-xs px-6 py-3 w-full shadow-neon font-bold"
+            className="btn-royal text-xs px-6 py-3 w-full shadow-sm font-bold"
           >
             Return to Dashboard
           </button>
@@ -671,7 +671,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
   if (questions.length === 0) {
     return (
       <div className="fixed inset-0 z-50 bg-dark-950 text-slate-100 flex items-center justify-center p-4">
-        <div className="max-w-md w-full p-8 rounded-3xl glass-panel text-center space-y-4 border border-amber-500/40 shadow-neon">
+        <div className="max-w-md w-full p-8 rounded-3xl glass-panel text-center space-y-4 border border-amber-500/40 shadow-sm">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center mx-auto text-amber-400">
             <AlertTriangle className="w-8 h-8" />
           </div>
@@ -681,7 +681,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           </p>
           <button
             onClick={onBack}
-            className="btn-royal text-xs px-6 py-3 w-full shadow-neon font-bold"
+            className="btn-royal text-xs px-6 py-3 w-full shadow-sm font-bold"
           >
             Return to Dashboard
           </button>
@@ -711,7 +711,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-md">
                 {assignment.title}
               </h2>
-              <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-brand-600/15 text-brand-400 border border-slate-800 uppercase">
                 {assignment.subject || assignment.domain || 'Assessment'}
               </span>
             </div>
@@ -731,7 +731,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           }`}>
             {remainingCount > 0 ? (
               <>
-                <Flame className="w-3.5 h-3.5 text-neon-amber animate-pulse" />
+                <Flame className="w-3.5 h-3.5 text-brand-300 animate-pulse" />
                 <span><strong>{remainingCount}</strong> to Complete</span>
               </>
             ) : (
@@ -748,9 +748,9 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               ? 'bg-rose-950/90 border-rose-500 text-rose-300 shadow-[0_0_20px_rgba(244,63,94,0.5)] animate-pulse'
               : (isTimeWarning 
                 ? 'bg-amber-950/80 border-amber-500 text-amber-300 shadow-sm'
-                : 'bg-dark-950 border-neon-orange/40 text-neon-glow shadow-neon-sm')
+                : 'bg-dark-950 border-slate-800 text-brand-200 shadow-subtle')
           }`}>
-            <Clock className={`w-4 h-4 ${isTimeCritical ? 'text-rose-400' : 'text-neon-orange'}`} />
+            <Clock className={`w-4 h-4 ${isTimeCritical ? 'text-rose-400' : 'text-brand-400'}`} />
             <span>{formatTime(timeLeft)}</span>
           </div>
         </div>
@@ -762,7 +762,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
             onClick={() => setShowPalette(!showPalette)}
             className={`px-3 py-1.5 rounded-xl text-xs font-mono font-semibold flex items-center gap-1.5 border transition ${
               showPalette 
-                ? 'bg-neon-orange text-white border-neon-orange shadow-neon-sm' 
+                ? 'bg-brand-600 text-white border-brand-500/50 shadow-subtle' 
                 : 'bg-dark-850 hover:bg-dark-800 text-slate-300 border-slate-700'
             }`}
             title="Question Navigator Grid"
@@ -778,13 +778,13 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
             className="p-2 rounded-xl bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 transition"
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen (F11)"}
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4 text-neon-orange" /> : <Maximize2 className="w-4 h-4" />}
+            {isFullscreen ? <Minimize2 className="w-4 h-4 text-brand-400" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
           <button
             type="button"
             onClick={() => setShowSubmitModal(true)}
-            className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition active:scale-95"
+            className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-subtle flex items-center gap-1.5 transition active:scale-95"
           >
             <Send className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Finish & Submit</span>
@@ -796,14 +796,14 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
       {/* OVERALL PROGRESS BAR */}
       <div className="h-1 bg-dark-900 w-full overflow-hidden shrink-0">
         <div 
-          className="h-full bg-gradient-to-r from-neon-orange via-neon-amber to-emerald-400 transition-all duration-300"
+          className="h-full bg-gradient-to-r from-brand-600 via-brand-500 to-emerald-400 transition-all duration-300"
           style={{ width: `${progressPercent}%` }}
         />
       </div>
 
       {/* PROCTORING ALERT BANNER IF VIOLATION DETECTED */}
       {proctorWarning && (
-        <div className="mx-4 sm:mx-8 mt-3 p-3.5 rounded-2xl bg-rose-950/90 border-2 border-rose-500 shadow-neon flex items-center justify-between gap-3 text-xs text-rose-200 animate-pulse z-30 shrink-0">
+        <div className="mx-4 sm:mx-8 mt-3 p-3.5 rounded-2xl bg-rose-950/90 border-2 border-rose-500 shadow-sm flex items-center justify-between gap-3 text-xs text-rose-200 animate-pulse z-30 shrink-0">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 animate-bounce" />
             <div>
@@ -857,7 +857,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               {/* Question Header Meta */}
               <div className="flex items-center justify-between gap-3 border-b border-slate-800/90 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="px-3 py-1 rounded-xl bg-neon-orange text-white font-mono font-black text-xs sm:text-sm shadow-neon-sm">
+                  <span className="px-3 py-1 rounded-xl bg-brand-600 text-white font-mono font-black text-xs sm:text-sm shadow-subtle">
                     Question {currentIndex + 1} of {questions.length}
                   </span>
                   {answers[currentQuestion.id] ? (
@@ -873,7 +873,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
 
                 <div className="flex items-center gap-2 flex-wrap">
                   {currentQuestion.objective_title && (
-                    <span className="hidden sm:inline-block text-[11px] font-mono text-neon-amber px-2.5 py-1 rounded-lg bg-dark-900 border border-slate-800 truncate max-w-xs">
+                    <span className="hidden sm:inline-block text-[11px] font-mono text-brand-300 px-2.5 py-1 rounded-lg bg-dark-900 border border-slate-800 truncate max-w-xs">
                       {currentQuestion.objective_title}
                     </span>
                   )}
@@ -901,14 +901,14 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
                       onClick={() => handleSelectOption(currentQuestion.id, optKey)}
                       className={`w-full p-3.5 sm:p-4 rounded-xl text-left text-xs sm:text-sm flex items-center justify-between transition-all duration-150 border cursor-pointer active:scale-[0.995] ${
                         isSelected 
-                          ? 'bg-neon-orange/20 border-neon-orange text-white shadow-neon-sm font-semibold ring-1 ring-neon-orange/60' 
+                          ? 'bg-brand-600/20 border-brand-500/50 text-white shadow-subtle font-semibold ring-1 ring-brand-500/30/60' 
                           : 'bg-dark-900/80 hover:bg-dark-850 text-slate-200 border-slate-800 hover:border-slate-700'
                       }`}
                     >
                       <div className="flex items-center gap-3.5">
                         <span className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center transition-all shrink-0 ${
                           isSelected 
-                            ? 'bg-neon-orange text-white shadow-md' 
+                            ? 'bg-brand-600 text-white shadow-md' 
                             : 'bg-dark-800 text-slate-400 border border-slate-700'
                         }`}>
                           {optKey}
@@ -917,7 +917,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
                       </div>
 
                       {isSelected && (
-                        <CheckCircle2 className="w-5 h-5 text-neon-orange shrink-0 animate-in zoom-in-75" />
+                        <CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0 animate-in zoom-in-75" />
                       )}
                     </button>
                   );
@@ -956,7 +956,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div>
                   <h3 className="text-xs font-bold text-white flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4 text-neon-orange" /> Question Palette
+                    <LayoutGrid className="w-4 h-4 text-brand-400" /> Question Palette
                   </h3>
                   <p className="text-[11px] text-slate-400 font-mono">
                     <strong className="text-emerald-400">{answeredCount}</strong> answered · <strong className="text-amber-400">{remainingCount}</strong> to complete
@@ -987,7 +987,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
                       }}
                       className={`h-11 rounded-xl font-mono text-xs font-bold flex flex-col items-center justify-center transition-all ${
                         isCurrent 
-                          ? 'bg-neon-orange text-white ring-2 ring-white shadow-neon-sm scale-105' 
+                          ? 'bg-brand-600 text-white ring-2 ring-white shadow-subtle scale-105' 
                           : isAnswered 
                             ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-900' 
                             : 'bg-dark-950 text-slate-400 border border-slate-800 hover:border-slate-700'
@@ -1007,7 +1007,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               {/* Legend */}
               <div className="space-y-1.5 pt-3 border-t border-slate-800 text-[11px] font-mono text-slate-400">
                 <div className="flex items-center gap-2">
-                  <span className="w-3 h-3 rounded bg-neon-orange" />
+                  <span className="w-3 h-3 rounded bg-brand-600" />
                   <span>Current Question</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1025,7 +1025,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               <button
                 type="button"
                 onClick={() => setShowSubmitModal(true)}
-                className="w-full py-2.5 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold shadow-neon-sm flex items-center justify-center gap-2"
+                className="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-subtle flex items-center justify-center gap-2"
               >
                 <Send className="w-3.5 h-3.5" /> Finish & Submit Assessment
               </button>
@@ -1052,7 +1052,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
             Question {currentIndex + 1} of {questions.length}
           </span>
           <span className="text-slate-600">•</span>
-          <span className={remainingCount > 0 ? "text-neon-amber font-bold" : "text-emerald-400 font-bold"}>
+          <span className={remainingCount > 0 ? "text-brand-300 font-bold" : "text-emerald-400 font-bold"}>
             {remainingCount > 0 ? `${remainingCount} to Complete` : 'All Answered ✓'}
           </span>
         </div>
@@ -1061,7 +1061,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           <button
             type="button"
             onClick={() => setCurrentIndex(prev => Math.min(questions.length - 1, prev + 1))}
-            className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold flex items-center gap-2 shadow-neon-sm transition"
+            className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold flex items-center gap-2 shadow-subtle transition"
           >
             <span className="hidden sm:inline">Next Question</span> <ChevronRight className="w-4 h-4" />
           </button>
@@ -1069,7 +1069,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           <button
             type="button"
             onClick={() => setShowSubmitModal(true)}
-            className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-neon-sm transition animate-pulse"
+            className="px-5 py-2 sm:px-6 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-subtle transition animate-pulse"
           >
             <span>Finish & Submit</span> <Send className="w-3.5 h-3.5" />
           </button>
@@ -1094,7 +1094,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
           <div className="flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
             <span className="font-bold text-white flex items-center gap-1">
-              <Camera className="w-3 h-3 text-neon-orange" /> YOLOv8 Proctor
+              <Camera className="w-3 h-3 text-brand-400" /> YOLOv8 Proctor
             </span>
           </div>
 
@@ -1186,7 +1186,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
               </div>
 
               {isVerifyingFrame && (
-                <span className="w-2 h-2 rounded-full bg-neon-orange animate-ping shrink-0" title="YOLOv8 frame verification active" />
+                <span className="w-2 h-2 rounded-full bg-brand-600 animate-ping shrink-0" title="YOLOv8 frame verification active" />
               )}
             </div>
 
@@ -1235,8 +1235,8 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
       {/* CONFIRM SUBMIT MODAL */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl glass-panel-accent border border-neon-orange/40 shadow-neon space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+          <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl glass-panel-accent border border-slate-800 shadow-sm space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400">
               <CheckSquare className="w-6 h-6" />
             </div>
             
@@ -1269,7 +1269,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
                 type="button"
                 onClick={() => submitToServer(answers)}
                 disabled={submitting}
-                className="btn-royal text-xs py-2 px-5 flex items-center gap-1.5 shadow-neon font-bold"
+                className="btn-royal text-xs py-2 px-5 flex items-center gap-1.5 shadow-sm font-bold"
               >
                 {submitting ? (
                   <>
@@ -1289,7 +1289,7 @@ const StudentAssessmentPage = ({ assignment, onBack }) => {
       {/* CONFIRM EXIT MODAL */}
       {showExitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl glass-panel border border-rose-500/40 shadow-neon space-y-4">
+          <div className="max-w-md w-full p-6 sm:p-8 rounded-3xl glass-panel border border-rose-500/40 shadow-sm space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400">
               <AlertCircle className="w-6 h-6" />
             </div>

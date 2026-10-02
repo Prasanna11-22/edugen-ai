@@ -1366,11 +1366,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
     <div className="space-y-8 pb-20 animate-in fade-in">
       
       {/* Top Banner with Authority Access Header */}
-      <div className="rounded-3xl glass-panel-accent p-8 border border-neon-orange/40 shadow-neon space-y-5">
+      <div className="rounded-3xl glass-panel-accent p-8 border border-slate-800 shadow-sm space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[10px] font-mono uppercase tracking-widest text-neon-amber font-bold">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-brand-300 font-bold">
                 TEACHER CONTROLLED RAG STUDIO
               </span>
               <span className="text-slate-600">·</span>
@@ -1388,7 +1388,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             <div className="shrink-0 flex items-center gap-2">
               <button
                 onClick={() => setShowAssignModal(true)}
-                className="btn-royal text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-neon"
+                className="btn-royal text-xs flex items-center gap-1.5 py-2.5 px-4 shadow-sm"
               >
                 <Send className="w-3.5 h-3.5" /> Assign to Classroom
               </button>
@@ -1402,7 +1402,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             onClick={() => setActiveStudioTab('units')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'units'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1417,7 +1417,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             }}
             className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'ingest'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1433,7 +1433,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'review'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1449,7 +1449,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'guardrails'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1463,7 +1463,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             }}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'classrooms'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1474,7 +1474,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             onClick={() => setActiveStudioTab('heatmap')}
             className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
               activeStudioTab === 'heatmap'
-                ? 'bg-neon-orange text-white shadow-neon-sm'
+                ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-dark-900 hover:bg-dark-850 text-slate-300 border border-slate-800'
             }`}
           >
@@ -1490,11 +1490,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         <form onSubmit={handleCreateUnitAndUpload} noValidate className="space-y-8 animate-in fade-in">
           
           {/* STEP 1: Two-Column Upload, OCR Review Gate & Semantic Chunker Inspector */}
-          <div className="rounded-2xl glass-panel p-6 sm:p-7 border border-neon-orange/30 shadow-neon space-y-5">
+          <div className="rounded-2xl glass-panel p-6 sm:p-7 border border-slate-800 shadow-sm space-y-5">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-3 border-b border-slate-800">
               <div>
                 <div className="flex items-center gap-2">
-                  <Scan className="w-5 h-5 text-neon-orange" />
+                  <Scan className="w-5 h-5 text-brand-400" />
                   <h3 className="text-lg font-bold text-white">
                     Step 1: Source Ingest & Multimodal OCR Review Gate
                   </h3>
@@ -1511,7 +1511,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   onClick={() => setIngestMode('direct_pdf')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
                     ingestMode === 'direct_pdf'
-                      ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                      ? 'bg-brand-600 text-white shadow-sm font-bold'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -1522,7 +1522,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   onClick={() => setIngestMode('ocr_review')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${
                     ingestMode === 'ocr_review'
-                      ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                      ? 'bg-brand-600 text-white shadow-sm font-bold'
                       : 'text-slate-400 hover:text-white'
                   }`}
                 >
@@ -1568,16 +1568,16 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 {ingestMode === 'ocr_review' && (
                   <div className="p-4 rounded-xl bg-dark-950/90 border border-slate-800 space-y-3.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold uppercase text-neon-orange flex items-center gap-1.5">
-                        <Upload className="w-4 h-4 text-neon-orange" /> Upload Scanned Document Pages:
+                      <span className="text-xs font-mono font-bold uppercase text-brand-400 flex items-center gap-1.5">
+                        <Upload className="w-4 h-4 text-brand-400" /> Upload Scanned Document Pages:
                       </span>
-                      <div className="flex items-center gap-1.5 bg-dark-900 px-2 py-0.5 rounded border border-slate-700 text-[10px] font-mono text-neon-amber font-bold">
-                        <Sliders className="w-3 h-3 text-neon-amber" /> Gate Threshold: {ocrThreshold}%
+                      <div className="flex items-center gap-1.5 bg-dark-900 px-2 py-0.5 rounded border border-slate-700 text-[10px] font-mono text-brand-300 font-bold">
+                        <Sliders className="w-3 h-3 text-brand-300" /> Gate Threshold: {ocrThreshold}%
                       </div>
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                      <label className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-semibold cursor-pointer shadow-neon-sm transition-all shrink-0 flex items-center gap-1.5">
+                      <label className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold cursor-pointer shadow-subtle transition-all shrink-0 flex items-center gap-1.5">
                         <Upload className="w-3.5 h-3.5" /> Select Scanned Page Images / PDF
                         <input
                           type="file"
@@ -1602,7 +1602,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     <div className="space-y-1 pt-1">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="text-slate-400">Review-by-Exception Threshold:</span>
-                        <span className="font-mono font-bold text-neon-amber">{ocrThreshold}% Confidence</span>
+                        <span className="font-mono font-bold text-brand-300">{ocrThreshold}% Confidence</span>
                       </div>
                       <input
                         type="range"
@@ -1620,17 +1620,17 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
                     {/* Progress Indicator Bar during Batch Scan */}
                     {ocrScanning && (
-                      <div className="p-3.5 rounded-xl bg-dark-900 border border-neon-orange/40 space-y-2 animate-in fade-in">
+                      <div className="p-3.5 rounded-xl bg-dark-900 border border-slate-800 space-y-2 animate-in fade-in">
                         <div className="flex items-center justify-between text-xs font-mono">
-                          <span className="text-neon-orange font-bold flex items-center gap-1.5">
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-neon-orange" />
+                          <span className="text-brand-400 font-bold flex items-center gap-1.5">
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-400" />
                             {ocrProgress.message || `Processing page ${ocrProgress.current} of ${ocrProgress.total}...`}
                           </span>
-                          <span className="text-neon-amber font-bold">{ocrProgress.percent}%</span>
+                          <span className="text-brand-300 font-bold">{ocrProgress.percent}%</span>
                         </div>
                         <div className="w-full h-2 rounded-full bg-dark-950 overflow-hidden border border-slate-800">
                           <div
-                            className="h-full bg-gradient-to-r from-neon-orange via-neon-amber to-emerald-400 transition-all duration-300"
+                            className="h-full bg-gradient-to-r from-brand-600 via-brand-500 to-emerald-400 transition-all duration-300"
                             style={{ width: `${ocrProgress.percent}%` }}
                           />
                         </div>
@@ -1666,7 +1666,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         Upload Standard PDF File
                       </label>
                       <div className="flex items-center gap-3">
-                        <label className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-semibold cursor-pointer shadow-neon-sm transition-all shrink-0">
+                        <label className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold cursor-pointer shadow-subtle transition-all shrink-0">
                           Choose PDF
                           <input
                             type="file"
@@ -1705,12 +1705,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 >
                   {parsingChunks ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-brand-400" />
                       Parsing, Chunking & Computing Embeddings...
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4 text-neon-orange" />
+                      <Upload className="w-4 h-4 text-brand-400" />
                       {ocrBatchResult && ocrBatchResult.needs_review_count > 0
                         ? `Chunking Blocked (${ocrBatchResult.needs_review_count} page(s) need review)`
                         : 'Preview Semantic Chunks & Boundaries'}
@@ -1724,13 +1724,13 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 <div className="space-y-3 flex-1">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
                     <div className="flex items-center gap-2">
-                      <FileCode className="w-4 h-4 text-neon-orange" />
+                      <FileCode className="w-4 h-4 text-brand-400" />
                       <span className="text-xs font-mono uppercase tracking-wider text-slate-200 font-bold">
                         Semantic Chunker Inspector
                       </span>
                     </div>
                     {previewChunksData && (
-                      <span className="text-[10px] font-mono text-neon-amber px-2 py-0.5 rounded bg-dark-900 border border-slate-800">
+                      <span className="text-[10px] font-mono text-brand-300 px-2 py-0.5 rounded bg-dark-900 border border-slate-800">
                         {previewChunksData.total_chunks} Chunks (~{previewChunksData.total_tokens_estimated} Tokens)
                       </span>
                     )}
@@ -1751,7 +1751,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           className="p-3 rounded-xl bg-dark-900/90 border border-slate-800/80 space-y-1.5 text-xs font-mono"
                         >
                           <div className="flex items-center justify-between text-[10px] text-slate-400">
-                            <span className="text-neon-orange font-bold">Chunk #{c.chunk_index}</span>
+                            <span className="text-brand-400 font-bold">Chunk #{c.chunk_index}</span>
                             <span>{c.token_count} tokens · {c.char_count} chars</span>
                           </div>
                           <p className="text-slate-300 text-[11px] line-clamp-3 leading-relaxed">
@@ -1784,8 +1784,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 {/* 1. Summary Banner */}
                 <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
                   ocrBatchResult.needs_review_count > 0
-                    ? 'bg-amber-950/30 border-neon-amber/50 shadow-neon-sm'
-                    : 'bg-emerald-950/30 border-emerald-500/40 shadow-neon-sm'
+                    ? 'bg-amber-950/30 border-neon-amber/50 shadow-subtle'
+                    : 'bg-emerald-950/30 border-emerald-500/40 shadow-subtle'
                 }`}>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -1811,7 +1811,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       <button
                         type="button"
                         onClick={handleAcceptAllFlaggedPages}
-                        className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white font-bold text-xs flex items-center gap-1.5 shadow-neon-sm transition"
+                        className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-subtle transition"
                       >
                         <CheckCheck className="w-4 h-4" /> Accept All ({ocrBatchResult.needs_review_count})
                       </button>
@@ -1821,7 +1821,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       onClick={() => setShowAutoAcceptedPages(!showAutoAcceptedPages)}
                       className="px-3.5 py-2 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition"
                     >
-                      <Eye className="w-3.5 h-3.5 text-neon-orange" />
+                      <Eye className="w-3.5 h-3.5 text-brand-400" />
                       {showAutoAcceptedPages ? "Hide Auto-Accepted Pages" : `View Auto-Accepted Pages (${ocrBatchResult.auto_accepted_count})`}
                     </button>
                   </div>
@@ -1831,8 +1831,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 {ocrBatchResult.needs_review_count > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono font-bold uppercase text-neon-amber flex items-center gap-1.5">
-                        <AlertTriangle className="w-4 h-4 text-neon-amber" /> Review Flagged Exception Pages ({ocrBatchResult.needs_review_count}):
+                      <span className="text-xs font-mono font-bold uppercase text-brand-300 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-brand-300" /> Review Flagged Exception Pages ({ocrBatchResult.needs_review_count}):
                       </span>
                       <span className="text-[11px] font-mono text-slate-400">
                         Edit text below & click Approve Page to unblock chunking
@@ -1847,7 +1847,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         >
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-neon-amber/20 text-neon-amber border border-neon-amber/40 text-xs font-mono font-bold">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-neon-amber/20 text-brand-300 border border-neon-amber/40 text-xs font-mono font-bold">
                                 Page {page.page_number}
                               </span>
                               <span className="px-2 py-0.5 rounded bg-dark-900 border border-slate-700 text-[11px] font-mono text-rose-400 font-bold">
@@ -1870,9 +1870,9 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           {/* Uncertain Spans highlight */}
                           {page.uncertain_spans && page.uncertain_spans.length > 0 && (
                             <div className="p-2.5 rounded-xl bg-dark-900 border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-neon-amber font-mono text-[10px] uppercase">Uncertain Terms:</span>
+                              <span className="font-bold text-brand-300 font-mono text-[10px] uppercase">Uncertain Terms:</span>
                               {page.uncertain_spans.map((u, uIdx) => (
-                                <span key={uIdx} className="px-2 py-0.5 rounded bg-neon-amber/10 border border-neon-amber/30 text-neon-amber font-mono text-[10px]">
+                                <span key={uIdx} className="px-2 py-0.5 rounded bg-neon-amber/10 border border-neon-amber/30 text-brand-300 font-mono text-[10px]">
                                   {u.guess || u.span}
                                 </span>
                               ))}
@@ -1888,7 +1888,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                               value={ocrPageEditTexts[page.page_number] || ''}
                               onChange={(e) => setOcrPageEditTexts({ ...ocrPageEditTexts, [page.page_number]: e.target.value })}
                               rows={4}
-                              className="w-full rounded-xl bg-dark-900 border border-slate-700 p-2.5 text-xs font-mono text-slate-200 resize-y focus:border-neon-orange focus:outline-none leading-relaxed"
+                              className="w-full rounded-xl bg-dark-900 border border-slate-700 p-2.5 text-xs font-mono text-slate-200 resize-y focus:border-brand-500/50 focus:outline-none leading-relaxed"
                             />
                           </div>
                         </div>
@@ -1952,7 +1952,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
               {objectives.map((obj, idx) => (
                 <div key={idx} className="p-4 rounded-xl bg-dark-900 border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono font-bold text-neon-orange">
+                    <span className="text-xs font-mono font-bold text-brand-400">
                       Objective #{idx + 1}
                     </span>
                     {objectives.length > 1 && (
@@ -1983,9 +1983,9 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       title="Run pedagogical clarity and measurability audit"
                     >
                       {validatingObjectiveIdx === idx ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-neon-orange" />
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-400" />
                       ) : (
-                        <Sparkles className="w-3.5 h-3.5 text-neon-orange" />
+                        <Sparkles className="w-3.5 h-3.5 text-brand-400" />
                       )}
                       <span>Audit</span>
                     </button>
@@ -2009,11 +2009,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1 font-mono text-neon-orange">Difficulty Scope</label>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-mono text-brand-400">Difficulty Scope</label>
                       <select
                         value={obj.difficulty || 'Medium'}
                         onChange={(e) => updateObjective(idx, 'difficulty', e.target.value)}
-                        className="w-full rounded-xl glass-input p-2 text-xs font-mono font-bold text-neon-amber"
+                        className="w-full rounded-xl glass-input p-2 text-xs font-mono font-bold text-brand-300"
                       >
                         <option value="Easy">Easy (Recall & Fundamentals)</option>
                         <option value="Medium">Medium (Easy + Medium)</option>
@@ -2035,11 +2035,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 mb-1 font-mono text-neon-orange">Quiz Questions Count</label>
+                      <label className="block text-[10px] text-slate-400 mb-1 font-mono text-brand-400">Quiz Questions Count</label>
                       <select
                         value={obj.quiz_count || 3}
                         onChange={(e) => updateObjective(idx, 'quiz_count', Number(e.target.value))}
-                        className="w-full rounded-xl glass-input p-2 text-xs font-mono font-bold text-neon-amber"
+                        className="w-full rounded-xl glass-input p-2 text-xs font-mono font-bold text-brand-300"
                       >
                         {[1, 2, 3, 4, 5, 6, 7, 8, 10].map(n => (
                           <option key={n} value={n}>{n} Questions</option>
@@ -2051,7 +2051,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   {/* Optional Constraints Fold */}
                   <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px]">
                     <span className="text-[10px] font-mono text-slate-400">
-                      RAG Retrieval Threshold: <strong className="text-neon-amber font-mono">k=5 chunks (&gt;0.18 sim)</strong>
+                      RAG Retrieval Threshold: <strong className="text-brand-300 font-mono">k=5 chunks (&gt;0.18 sim)</strong>
                     </span>
                     <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3" /> Gap Detection Active
@@ -2063,9 +2063,9 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
               <button
                 type="button"
                 onClick={addObjective}
-                className="w-full py-2.5 rounded-xl border border-dashed border-slate-700 hover:border-neon-orange text-xs text-slate-300 hover:text-white transition-all flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 rounded-xl border border-dashed border-slate-700 hover:border-brand-500/50 text-xs text-slate-300 hover:text-white transition-all flex items-center justify-center gap-1.5"
               >
-                <Plus className="w-4 h-4 text-neon-orange" /> Add Another Objective Contract
+                <Plus className="w-4 h-4 text-brand-400" /> Add Another Objective Contract
               </button>
             </div>
           </GlassCard>
@@ -2095,7 +2095,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           setSelectedClassroomIds(assignClassrooms.map(c => c.id));
                         }
                       }}
-                      className="text-[11px] text-neon-orange hover:text-neon-amber font-semibold transition-colors"
+                      className="text-[11px] text-brand-400 hover:text-brand-300 font-semibold transition-colors"
                     >
                       {selectedClassroomIds.length === assignClassrooms.length ? 'Deselect All' : 'Select All Classrooms'}
                     </button>
@@ -2114,7 +2114,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           }}
                           className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center gap-3 ${
                             isSelected
-                              ? 'bg-neon-orange/15 border-neon-orange text-white shadow-neon-sm'
+                              ? 'bg-brand-600/15 border-brand-500/50 text-white shadow-subtle'
                               : 'bg-dark-900/80 border-slate-800 text-slate-300 hover:border-slate-700'
                           }`}
                         >
@@ -2122,11 +2122,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => {}}
-                            className="rounded text-neon-orange focus:ring-0 cursor-pointer"
+                            className="rounded text-brand-400 focus:ring-0 cursor-pointer"
                           />
                           <div>
                             <div className="font-semibold text-xs text-white">{c.name}</div>
-                            <div className="text-[10px] text-slate-400">{c.subject} · Code: <b className="font-mono text-neon-amber">{c.join_code}</b></div>
+                            <div className="text-[10px] text-slate-400">{c.subject} · Code: <b className="font-mono text-brand-300">{c.join_code}</b></div>
                           </div>
                         </div>
                       );
@@ -2136,7 +2136,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-800">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-neon-orange" /> Assessment Time Limit (Minutes)
+                        <Clock className="w-3.5 h-3.5 text-brand-400" /> Assessment Time Limit (Minutes)
                       </label>
                       <div className="flex items-center gap-2">
                         <input
@@ -2145,7 +2145,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           max={180}
                           value={timeLimitMinutes}
                           onChange={(e) => setTimeLimitMinutes(Math.max(1, Number(e.target.value)))}
-                          className="w-full rounded-xl glass-input p-2.5 text-xs font-mono text-neon-glow"
+                          className="w-full rounded-xl glass-input p-2.5 text-xs font-mono text-brand-200"
                           placeholder="15"
                         />
                         <span className="text-xs text-slate-400 whitespace-nowrap">mins</span>
@@ -2175,7 +2175,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
             <button
               type="submit"
               disabled={generating}
-              className="btn-royal text-sm px-9 py-4 shadow-neon relative group overflow-hidden transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
+              className="btn-royal text-sm px-9 py-4 shadow-sm relative group overflow-hidden transition-all duration-300 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
             >
               {/* Moving light shimmer sweep */}
               <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
@@ -2205,12 +2205,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         <div className="space-y-4 animate-in fade-in">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Layers className="w-5 h-5 text-neon-orange" />
+              <Layers className="w-5 h-5 text-brand-400" />
               <h2 className="text-lg font-bold text-white">All Stored Curriculum Units</h2>
             </div>
             <button
               onClick={() => setActiveStudioTab('ingest')}
-              className="btn-royal text-xs flex items-center gap-1.5 py-2 px-4 shadow-neon"
+              className="btn-royal text-xs flex items-center gap-1.5 py-2 px-4 shadow-sm"
             >
               <Plus className="w-4 h-4" /> Ingest New Source
             </button>
@@ -2238,12 +2238,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       setCurrentUnitId(u.id);
                       setActiveStudioTab('review');
                     }}
-                    className="p-5 rounded-2xl glass-panel border border-slate-800 hover:border-neon-orange/50 transition-all cursor-pointer group space-y-3"
+                    className="p-5 rounded-2xl glass-panel border border-slate-800 hover:border-brand-500/30 transition-all cursor-pointer group space-y-3"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] font-mono uppercase text-neon-orange font-semibold">
+                          <span className="text-[10px] font-mono uppercase text-brand-400 font-semibold">
                             Source: {u.source_title}
                           </span>
                           <span className="text-slate-600">·</span>
@@ -2251,7 +2251,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                             {new Date(u.created_at).toLocaleDateString()}
                           </span>
                         </div>
-                        <h3 className="text-base font-bold text-white group-hover:text-neon-glow transition-colors">
+                        <h3 className="text-base font-bold text-white group-hover:text-brand-200 transition-colors">
                           {u.title}
                         </h3>
                       </div>
@@ -2269,7 +2269,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           <Trash2 className="w-3.5 h-3.5" />
                           <span>Remove</span>
                         </button>
-                        <button className="px-3 py-1.5 rounded-xl bg-neon-orange/15 text-neon-glow border border-neon-orange/40 text-xs font-semibold group-hover:bg-neon-orange group-hover:text-white transition-all flex items-center gap-1">
+                        <button className="px-3 py-1.5 rounded-xl bg-brand-600/15 text-brand-200 border border-slate-800 text-xs font-semibold group-hover:bg-brand-600 group-hover:text-white transition-all flex items-center gap-1">
                           Open Studio <ArrowRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
@@ -2309,7 +2309,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
         <div className="space-y-6 animate-in fade-in">
           {loading ? (
             <div className="py-20 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-              <RefreshCw className="w-5 h-5 animate-spin text-neon-orange" /> Loading learning pack details from PostgreSQL...
+              <RefreshCw className="w-5 h-5 animate-spin text-brand-400" /> Loading learning pack details from PostgreSQL...
             </div>
           ) : !unitDetails ? (
             <GlassCard className="text-center py-16 space-y-3">
@@ -2329,7 +2329,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
               <div className="p-5 rounded-2xl glass-panel border border-slate-800 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
-                    <span className="text-[10px] font-mono text-neon-orange uppercase font-bold">
+                    <span className="text-[10px] font-mono text-brand-400 uppercase font-bold">
                       Authoritative Source: {unitDetails.source?.title || 'Course Textbook'}
                     </span>
                     <h2 className="text-xl font-bold text-white mt-0.5">{unitDetails.unit?.title || unitDetails.title}</h2>
@@ -2347,7 +2347,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                       disabled={generating}
                       className="px-3 py-1.5 rounded-xl bg-dark-850 hover:bg-dark-800 text-slate-300 text-xs font-semibold border border-slate-700 flex items-center gap-1.5"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin text-neon-orange' : ''}`} />
+                      <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin text-brand-400' : ''}`} />
                       Regenerate Full Pack
                     </button>
                     <button
@@ -2397,7 +2397,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   <div className="flex flex-col gap-2 pt-2 border-t border-slate-800/80">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-slate-400 font-medium">Target Learning Objective:</span>
-                      <span className="text-[10px] font-mono text-neon-orange">
+                      <span className="text-[10px] font-mono text-brand-400">
                         {(unitDetails.assets || []).filter(a => a.objective_id === selectedReviewObjectiveId).length} Assets Generated
                       </span>
                     </div>
@@ -2413,15 +2413,15 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                             }}
                             className={`px-3 py-2 rounded-xl text-xs flex items-center gap-2 transition-all text-left whitespace-nowrap border ${
                               isSelected
-                                ? 'bg-neon-orange/20 border-neon-orange text-white shadow-neon-sm'
+                                ? 'bg-brand-600/20 border-brand-500/50 text-white shadow-subtle'
                                 : 'bg-dark-900 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                             }`}
                           >
-                            <span className="w-5 h-5 rounded-full bg-dark-800 text-neon-orange flex items-center justify-center text-[10px] font-mono font-bold">
+                            <span className="w-5 h-5 rounded-full bg-dark-800 text-brand-400 flex items-center justify-center text-[10px] font-mono font-bold">
                               {oIdx + 1}
                             </span>
                             <span className="max-w-[240px] truncate font-medium">{obj.text}</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-dark-950 border border-slate-700 text-neon-amber">
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-dark-950 border border-slate-700 text-brand-300">
                               {obj.bloom_level}
                             </span>
                           </button>
@@ -2453,7 +2453,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         }}
                         className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
                           isActive
-                            ? 'bg-neon-orange text-white shadow-neon-sm font-bold'
+                            ? 'bg-brand-600 text-white shadow-sm font-bold'
                             : 'bg-dark-900 hover:bg-dark-850 text-slate-400 hover:text-white border border-slate-800'
                         }`}
                       >
@@ -2476,7 +2476,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   <div className="space-y-4">
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>Total Terms: <strong className="text-white">{unitDetails.glossary?.length || 0}</strong></span>
-                      <span className="font-mono text-[10px] text-neon-orange">Immutable ground-truth terminology</span>
+                      <span className="font-mono text-[10px] text-brand-400">Immutable ground-truth terminology</span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2515,7 +2515,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                   type="button"
                                   onClick={() => handleSaveGlossaryTerm(item.id)}
                                   disabled={savingGlossary}
-                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-neon-orange hover:bg-neon-orange/90 text-dark-950 flex items-center gap-1 shadow-neon-sm"
+                                  className="px-3 py-1 rounded-lg text-xs font-semibold bg-brand-600 hover:bg-brand-600/90 text-dark-950 flex items-center gap-1 shadow-subtle"
                                 >
                                   {savingGlossary ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                                   Save Term
@@ -2525,7 +2525,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           ) : (
                             <>
                               <div className="flex items-center justify-between">
-                                <span className="font-bold text-white text-xs text-neon-orange font-mono">{item.term}</span>
+                                <span className="font-bold text-white text-xs text-brand-400 font-mono">{item.term}</span>
                                 <div className="flex items-center gap-2">
                                   <span className="text-[10px] font-mono text-slate-500">ID #{item.id}</span>
                                   <button
@@ -2560,7 +2560,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     {unitDetails.source?.chunks?.map((chunk) => (
                       <div key={chunk.id || chunk.chunk_index} className="p-4 rounded-xl bg-dark-950 border border-slate-800/80 space-y-2">
                         <div className="flex items-center justify-between border-b border-slate-800 pb-1.5 text-xs">
-                          <span className="font-mono font-bold text-neon-orange flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-brand-400 flex items-center gap-1.5">
                             <Hash className="w-3.5 h-3.5" /> Chunk #{chunk.chunk_index !== undefined ? chunk.chunk_index + 1 : chunk.id}
                           </span>
                           <span className="font-mono text-[10px] text-slate-400">
@@ -2596,9 +2596,9 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                               {currentActiveAsset.type === 'quiz' && (
                                 <button
                                   onClick={handleOpenQuizVersionHistory}
-                                  className="px-3 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all hover:border-neon-orange"
+                                  className="px-3 py-1 rounded-lg bg-dark-850 hover:bg-dark-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all hover:border-brand-500/50"
                                 >
-                                  <Clock className="w-3.5 h-3.5 text-neon-orange" /> Quiz History ({currentActiveAsset.all_versions?.length || 1})
+                                  <Clock className="w-3.5 h-3.5 text-brand-400" /> Quiz History ({currentActiveAsset.all_versions?.length || 1})
                                 </button>
                               )}
                               {ver.low_confidence || content.low_confidence ? (
@@ -2673,7 +2673,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                       <div className="flex flex-wrap items-center gap-1.5 pt-2">
                                         <span className="text-[10px] font-mono text-slate-400">Canonical Terms Applied:</span>
                                         {content.glossary_terms_applied.map((t, idx) => (
-                                          <span key={idx} className="px-2 py-0.5 rounded text-[10px] font-mono bg-neon-orange/20 text-neon-glow border border-neon-orange/30">
+                                          <span key={idx} className="px-2 py-0.5 rounded text-[10px] font-mono bg-brand-600/20 text-brand-200 border border-slate-800">
                                             {t}
                                           </span>
                                         ))}
@@ -2687,7 +2687,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                   <div className="space-y-3">
                                     {content.scenario && (
                                       <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 text-xs text-slate-200">
-                                        <span className="font-bold text-neon-orange block mb-1">Scenario / Challenge:</span>
+                                        <span className="font-bold text-brand-400 block mb-1">Scenario / Challenge:</span>
                                         <p>{content.scenario}</p>
                                       </div>
                                     )}
@@ -2697,7 +2697,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                         {content.steps.map((st, sIdx) => (
                                           <div key={sIdx} className="p-3.5 rounded-xl bg-dark-900 border border-slate-800 text-xs space-y-1">
                                             <div className="flex items-center gap-2 font-bold text-white">
-                                              <span className="w-5 h-5 rounded-full bg-neon-orange text-white flex items-center justify-center text-[10px] font-mono">
+                                              <span className="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-[10px] font-mono">
                                                 {st.step_number || sIdx + 1}
                                               </span>
                                               {st.title || `Step ${sIdx + 1}`}
@@ -2761,19 +2761,19 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                 type="checkbox"
                                                 checked={allSelected}
                                                 onChange={handleToggleAll}
-                                                className="rounded text-neon-orange focus:ring-0 cursor-pointer"
+                                                className="rounded text-brand-400 focus:ring-0 cursor-pointer"
                                               />
                                               <span>Select All ({displayItems.length})</span>
                                             </label>
 
                                             <span className="text-xs font-mono text-slate-400">
-                                              <strong className="text-neon-amber font-mono">{selectedQuizItemIds.length}</strong> of {displayItems.length} selected
+                                              <strong className="text-brand-300 font-mono">{selectedQuizItemIds.length}</strong> of {displayItems.length} selected
                                             </span>
 
                                             <button
                                               onClick={() => setShowRegenModal(true)}
                                               disabled={selectedQuizItemIds.length === 0 || regeneratingQuizItems}
-                                              className="px-3.5 py-1.5 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold flex items-center gap-1.5 shadow-neon-sm disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                              className="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-subtle disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                             >
                                               <Sparkles className="w-3.5 h-3.5" />
                                               Regenerate Selected ({selectedQuizItemIds.length})
@@ -2789,7 +2789,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                   <select
                                                     value={quizDifficultyToGenerate}
                                                     onChange={(e) => setQuizDifficultyToGenerate(e.target.value)}
-                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-neon-amber bg-dark-900 border border-slate-700"
+                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-brand-300 bg-dark-900 border border-slate-700"
                                                   >
                                                     <option value="Easy">Easy</option>
                                                     <option value="Medium">Medium</option>
@@ -2802,7 +2802,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                   <select
                                                     value={quizCountToGenerate}
                                                     onChange={(e) => setQuizCountToGenerate(Number(e.target.value))}
-                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-neon-orange bg-dark-900 border border-slate-700"
+                                                    className="rounded-lg glass-input py-1 px-2 text-xs font-mono font-bold text-brand-400 bg-dark-900 border border-slate-700"
                                                   >
                                                     {[1, 2, 3, 4, 5, 6, 7, 8, 10].map(n => (
                                                       <option key={n} value={n}>{n} Qs</option>
@@ -2817,7 +2817,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                               disabled={generating}
                                               className="px-3 py-1.5 rounded-xl bg-dark-900 hover:bg-dark-850 text-slate-300 text-xs font-semibold border border-slate-700 flex items-center gap-1.5"
                                             >
-                                              <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin text-neon-orange' : ''}`} />
+                                              <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin text-brand-400' : ''}`} />
                                               Regen Entire Set
                                             </button>
                                           </div>
@@ -2837,7 +2837,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                       {/* Per-Question Interactive Cards */}
                                       {loadingQuizItems ? (
                                         <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                                          <RefreshCw className="w-4 h-4 animate-spin text-neon-orange" />
+                                          <RefreshCw className="w-4 h-4 animate-spin text-brand-400" />
                                           Loading question versions...
                                         </div>
                                       ) : displayItems.length > 0 ? (
@@ -2853,7 +2853,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                 key={q.id || qIdx} 
                                                 className={`p-4 rounded-xl transition-all border space-y-3 ${
                                                   isChecked 
-                                                    ? 'bg-dark-900/95 border-neon-orange/60 shadow-neon-sm' 
+                                                    ? 'bg-dark-900/95 border-brand-500/40 shadow-subtle' 
                                                     : 'bg-dark-950 border-slate-800 hover:border-slate-700'
                                                 }`}
                                               >
@@ -2864,10 +2864,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                       type="checkbox"
                                                       checked={isChecked}
                                                       onChange={() => handleToggleOne(q.id)}
-                                                      className="mt-1 rounded text-neon-orange focus:ring-0 cursor-pointer w-4 h-4"
+                                                      className="mt-1 rounded text-brand-400 focus:ring-0 cursor-pointer w-4 h-4"
                                                     />
                                                     <div>
-                                                      <span className="font-mono text-xs font-bold text-neon-orange mr-2">
+                                                      <span className="font-mono text-xs font-bold text-brand-400 mr-2">
                                                         Q{qIdx + 1}.
                                                       </span>
                                                       <span className="text-xs font-bold text-white leading-relaxed font-sans">
@@ -2900,7 +2900,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                     <Badge variant="royal">{q.bloom_level || 'Understand'}</Badge>
 
                                                     {/* Version Badge */}
-                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-neon-orange">
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-brand-400">
                                                       v{q.current_version_no || 1}
                                                     </span>
 
@@ -2926,7 +2926,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                       onClick={() => handleOpenEditQuestion(q)}
                                                       className="px-2.5 py-1 rounded-lg bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-semibold flex items-center gap-1 transition-all"
                                                     >
-                                                      <Edit3 className="w-3 h-3 text-neon-orange" /> Edit
+                                                      <Edit3 className="w-3 h-3 text-brand-400" /> Edit
                                                     </button>
                                                   </div>
                                                 </div>
@@ -2945,7 +2945,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                                         }`}
                                                       >
                                                         <div className="flex items-center gap-2">
-                                                          <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                                                          <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-brand-400'}`}>
                                                             {optKey})
                                                           </span>
                                                           <span>{optVal}</span>
@@ -2974,8 +2974,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 {currentActiveAsset.type === 'answer_key' && (
                                   <div className="space-y-3">
                                     {content.policy && (
-                                      <div className="p-2.5 rounded-xl bg-dark-900 border border-slate-800 text-[11px] text-neon-amber font-mono flex items-center gap-1.5">
-                                        <Lock className="w-3.5 h-3.5 text-neon-amber shrink-0" />
+                                      <div className="p-2.5 rounded-xl bg-dark-900 border border-slate-800 text-[11px] text-brand-300 font-mono flex items-center gap-1.5">
+                                        <Lock className="w-3.5 h-3.5 text-brand-300 shrink-0" />
                                         <span>{content.policy}</span>
                                       </div>
                                     )}
@@ -2983,7 +2983,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                       content.answer_entries.map((ans, aIdx) => (
                                         <div key={aIdx} className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-2 text-xs">
                                           <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-                                            <span className="font-bold text-white uppercase font-mono text-xs text-neon-orange">
+                                            <span className="font-bold text-white uppercase font-mono text-xs text-brand-400">
                                               {ans.question_id || `Question ${aIdx + 1}`}
                                             </span>
                                             <span className="px-2 py-0.5 rounded font-mono text-xs font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">
@@ -3005,7 +3005,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                               </p>
                                             )}
                                             {ans.source_citation && (
-                                              <span className="text-[10px] font-mono text-neon-amber block pt-1">
+                                              <span className="text-[10px] font-mono text-brand-300 block pt-1">
                                                 Grounding Citation: {ans.source_citation}
                                               </span>
                                             )}
@@ -3024,7 +3024,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                     {/* Executive Overview Banner */}
                                     {(content.summary_overview || content.summary) && (
                                       <div className="p-4 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
-                                        <div className="flex items-center gap-2 text-xs font-bold text-neon-orange uppercase font-mono">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-brand-400 uppercase font-mono">
                                           <BookOpen className="w-3.5 h-3.5" /> Document Synthesis & Executive Overview
                                         </div>
                                         <p className="text-xs text-slate-200 leading-relaxed">
@@ -3037,8 +3037,8 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                     {content.short_summary_points && content.short_summary_points.length > 0 && (
                                       <div className="space-y-3">
                                         <div className="flex items-center justify-between">
-                                          <span className="text-xs font-bold text-neon-amber uppercase font-mono tracking-wider flex items-center gap-1.5">
-                                            <FileText className="w-3.5 h-3.5 text-neon-orange" />
+                                          <span className="text-xs font-bold text-brand-300 uppercase font-mono tracking-wider flex items-center gap-1.5">
+                                            <FileText className="w-3.5 h-3.5 text-brand-400" />
                                             Document Key Summary Points ({content.short_summary_points.length} Points)
                                           </span>
                                           <span className="text-[10px] font-mono text-slate-400">
@@ -3052,7 +3052,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                               className="p-3.5 rounded-xl bg-dark-950 border border-slate-800/90 hover:border-slate-700 transition-all space-y-1.5"
                                             >
                                               <div className="flex items-center gap-2">
-                                                <span className="w-5 h-5 rounded-full bg-neon-orange/20 text-neon-glow flex items-center justify-center text-[10px] font-mono font-bold shrink-0">
+                                                <span className="w-5 h-5 rounded-full bg-brand-600/20 text-brand-200 flex items-center justify-center text-[10px] font-mono font-bold shrink-0">
                                                   {ptIdx + 1}
                                                 </span>
                                                 <span className="font-bold text-xs text-white">
@@ -3071,18 +3071,18 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                     {/* Key Takeaways & Core Invariants */}
                                     {content.key_takeaways && content.key_takeaways.length > 0 && (
                                       <div className="space-y-2.5 pt-2">
-                                        <span className="text-xs font-bold text-neon-amber uppercase font-mono tracking-wider block">
+                                        <span className="text-xs font-bold text-brand-300 uppercase font-mono tracking-wider block">
                                           Core Invariants & Architectural Rules
                                         </span>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                                           {content.key_takeaways.map((item, kIdx) => (
                                             <div key={kIdx} className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
-                                              <span className="font-bold text-white block text-neon-glow font-mono text-xs">
+                                              <span className="font-bold text-white block text-brand-200 font-mono text-xs">
                                                 {item.concept || item.objective || `Rule #${kIdx + 1}`}
                                               </span>
                                               <p className="text-slate-300 leading-relaxed">{item.core_formula_rule}</p>
                                               {item.pitfall_to_avoid && (
-                                                <div className="text-[11px] text-neon-orange pt-1 flex items-start gap-1">
+                                                <div className="text-[11px] text-brand-400 pt-1 flex items-start gap-1">
                                                   <span className="font-bold shrink-0">Pitfall:</span>
                                                   <span>{item.pitfall_to_avoid}</span>
                                                 </div>
@@ -3096,13 +3096,13 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                     {/* Rapid Recall Triggers */}
                                     {(content.quick_recall_bullets || content.rapid_memory_triggers) && (
                                       <div className="p-4 rounded-xl bg-dark-950 border border-slate-800 text-xs space-y-2">
-                                        <span className="font-bold text-neon-glow uppercase font-mono text-[10px] flex items-center gap-1.5">
+                                        <span className="font-bold text-brand-200 uppercase font-mono text-[10px] flex items-center gap-1.5">
                                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Quick Exam & Study Recall Points:
                                         </span>
                                         <ul className="space-y-1.5 text-slate-300 pl-1">
                                           {(content.quick_recall_bullets || content.rapid_memory_triggers).map((trig, tIdx) => (
                                             <li key={tIdx} className="flex items-start gap-2 text-xs">
-                                              <span className="text-neon-orange font-bold font-mono">▸</span>
+                                              <span className="text-brand-400 font-bold font-mono">▸</span>
                                               <span>{trig}</span>
                                             </li>
                                           ))}
@@ -3124,7 +3124,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 }}
                                 className="px-3 py-1.5 rounded-xl bg-dark-850 hover:bg-dark-800 text-slate-300 hover:text-white border border-slate-700 text-xs flex items-center gap-1.5"
                               >
-                                <Edit3 className="w-3.5 h-3.5 text-neon-orange" />
+                                <Edit3 className="w-3.5 h-3.5 text-brand-400" />
                                 {editingContent ? 'View Formatted Cards' : 'Edit Raw JSON'}
                               </button>
 
@@ -3132,7 +3132,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 <button
                                   onClick={() => handleSingleItemRegenerate(currentActiveAsset.type, currentActiveAsset.objective_id, quizCountToGenerate, quizDifficultyToGenerate)}
                                   disabled={generating}
-                                  className="px-3 py-1.5 rounded-xl bg-neon-orange/20 hover:bg-neon-orange text-neon-glow hover:text-white border border-neon-orange/40 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                                  className="px-3 py-1.5 rounded-xl bg-brand-600/20 hover:bg-brand-600 text-brand-200 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-all"
                                 >
                                   <RefreshCw className={`w-3.5 h-3.5 ${generating ? 'animate-spin' : ''}`} />
                                   Regenerate Item
@@ -3176,7 +3176,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
           subtitle="Diagnostic class-wide mastery heatmaps across authoritative learning contracts"
         >
           <div className="py-12 text-center text-xs text-slate-400 space-y-3">
-            <BarChart3 className="w-10 h-10 text-neon-orange mx-auto opacity-70" />
+            <BarChart3 className="w-10 h-10 text-brand-400 mx-auto opacity-70" />
             <p className="max-w-md mx-auto">
               Diagnostic heatmap aggregates all formative submissions across active classrooms. Navigate to Classrooms & Analytics for live telemetry.
             </p>
@@ -3192,10 +3192,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       {/* SELECTIVE QUESTION REGENERATION MODAL */}
       {showRegenModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+          <div className="w-full max-w-lg rounded-3xl glass-panel-accent p-6 sm:p-8 border border-slate-800 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                <div className="w-9 h-9 rounded-xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400">
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
@@ -3236,7 +3236,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         onClick={() => setRegenReasonCategory(cat)}
                         className={`p-2 rounded-xl text-xs font-medium border text-center transition-all ${
                           isSelected
-                            ? 'bg-neon-orange text-white border-neon-orange font-bold shadow-neon-sm'
+                            ? 'bg-brand-600 text-white border-brand-500/50 font-bold shadow-subtle'
                             : 'bg-dark-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
                         }`}
                       >
@@ -3264,7 +3264,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
               {/* Guardrails Info Callout */}
               <div className="p-3 rounded-xl bg-dark-950 border border-slate-800/90 text-[11px] text-slate-300 space-y-1">
-                <div className="font-bold text-neon-amber font-mono flex items-center gap-1.5">
+                <div className="font-bold text-brand-300 font-mono flex items-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Grounding & Non-Duplication Contract
                 </div>
                 <p className="text-slate-400">
@@ -3285,7 +3285,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                   type="button"
                   onClick={handleExecuteSelectiveRegeneration}
                   disabled={regeneratingQuizItems}
-                  className="btn-royal text-xs py-2 px-5 flex items-center gap-2 shadow-neon disabled:opacity-50"
+                  className="btn-royal text-xs py-2 px-5 flex items-center gap-2 shadow-sm disabled:opacity-50"
                 >
                   {regeneratingQuizItems ? (
                     <>
@@ -3316,12 +3316,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-            <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl glass-panel-accent border border-neon-orange/40 shadow-neon overflow-hidden bg-dark-950/95">
+            <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-3xl glass-panel-accent border border-slate-800 shadow-sm overflow-hidden bg-dark-950/95">
               
               {/* Modal Top Header */}
               <div className="flex items-center justify-between p-5 sm:p-6 border-b border-slate-800/90 bg-dark-900/80">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange shadow-neon-sm shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400 shadow-subtle shrink-0">
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
@@ -3361,13 +3361,13 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         onClick={() => setSelectedHistoryVersionId(v.id)}
                         className={`w-full text-left p-3.5 rounded-2xl transition-all border flex flex-col gap-1.5 ${
                           isSelected
-                            ? 'bg-neon-orange/15 border-neon-orange text-white shadow-neon-sm'
+                            ? 'bg-brand-600/15 border-brand-500/50 text-white shadow-subtle'
                             : 'bg-dark-900/90 border-slate-800/80 text-slate-300 hover:border-slate-700 hover:bg-dark-850'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-xs flex items-center gap-1.5">
-                            <span className="font-mono text-neon-orange font-bold text-sm">Version {v.version_no}</span>
+                            <span className="font-mono text-brand-400 font-bold text-sm">Version {v.version_no}</span>
                             {isActive && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40">
                                 ACTIVE
@@ -3426,7 +3426,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                         <button
                           onClick={() => handleRestoreVersion(activeSelectedVer?.id)}
                           disabled={restoringVersion}
-                          className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold flex items-center gap-2 shadow-neon transition active:scale-95 disabled:opacity-50"
+                          className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition active:scale-95 disabled:opacity-50"
                         >
                           {restoringVersion ? (
                             <>
@@ -3463,7 +3463,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                           <div key={q.id || qIdx} className="p-4 rounded-xl bg-dark-950 border border-slate-800/90 space-y-3">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex items-start gap-2">
-                                <span className="font-mono text-xs font-bold text-neon-orange">
+                                <span className="font-mono text-xs font-bold text-brand-400">
                                   Q{qIdx + 1}.
                                 </span>
                                 <span className="text-xs font-semibold text-white leading-relaxed font-sans">
@@ -3471,7 +3471,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                 </span>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-neon-amber">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-900 border border-slate-700 text-brand-300">
                                   {tier}
                                 </span>
                                 <Badge variant="royal">{bloom}</Badge>
@@ -3492,7 +3492,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                                     }`}
                                   >
                                     <div className="flex items-center gap-2">
-                                      <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-neon-orange'}`}>
+                                      <span className={`font-mono text-xs font-bold uppercase ${isCorrect ? 'text-emerald-400' : 'text-brand-400'}`}>
                                         {optKey})
                                       </span>
                                       <span>{optVal}</span>
@@ -3512,12 +3512,12 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                               <div className="p-2.5 rounded-xl bg-dark-900/80 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
                                 {rat && (
                                   <div>
-                                    <strong className="text-neon-orange">Rationale:</strong> {rat}
+                                    <strong className="text-brand-400">Rationale:</strong> {rat}
                                   </div>
                                 )}
                                 {cit && (
                                   <div>
-                                    <strong className="text-neon-amber">Citation:</strong> {cit}
+                                    <strong className="text-brand-300">Citation:</strong> {cit}
                                   </div>
                                 )}
                               </div>
@@ -3558,10 +3558,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       {/* QUESTION MANUAL EDIT MODAL */}
       {showEditQuestionModal && editingQuestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl glass-panel-accent p-6 sm:p-8 border border-slate-800 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 sticky top-0 bg-dark-950/90 backdrop-blur z-10">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange">
+                <div className="w-9 h-9 rounded-xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400">
                   <Edit3 className="w-5 h-5" />
                 </div>
                 <div>
@@ -3724,7 +3724,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 type="button"
                 onClick={handleSaveQuestionEdit}
                 disabled={savingQuestionEdit || !questionFormData.question_text.trim()}
-                className="btn-royal text-xs py-2 px-5 flex items-center gap-1.5 shadow-neon"
+                className="btn-royal text-xs py-2 px-5 flex items-center gap-1.5 shadow-sm"
               >
                 {savingQuestionEdit ? (
                   <>
@@ -3746,10 +3746,10 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
       {/* ASSIGN TO CLASSROOM MODAL */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in">
-          <div className="w-full max-w-lg rounded-3xl glass-panel-accent p-6 sm:p-8 border border-neon-orange/40 shadow-neon space-y-5">
+          <div className="w-full max-w-lg rounded-3xl glass-panel-accent p-6 sm:p-8 border border-slate-800 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Send className="w-4 h-4 text-neon-orange" /> Assign Lesson to Classrooms
+                <Send className="w-4 h-4 text-brand-400" /> Assign Lesson to Classrooms
               </h3>
               <button
                 onClick={() => setShowAssignModal(false)}
@@ -3777,11 +3777,11 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                               prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
                             );
                           }}
-                          className="rounded text-neon-orange focus:ring-0"
+                          className="rounded text-brand-400 focus:ring-0"
                         />
                         <span className="text-xs font-semibold text-white">{c.name} ({c.subject})</span>
                       </div>
-                      <span className="text-[10px] font-mono text-neon-amber">{c.join_code}</span>
+                      <span className="text-[10px] font-mono text-brand-300">{c.join_code}</span>
                     </label>
                   ))}
                 </div>
@@ -3796,7 +3796,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                     max={180}
                     value={timeLimitMinutes}
                     onChange={(e) => setTimeLimitMinutes(Math.max(1, Number(e.target.value)))}
-                    className="w-full rounded-xl glass-input p-2.5 text-xs font-mono text-neon-glow"
+                    className="w-full rounded-xl glass-input p-2.5 text-xs font-mono text-brand-200"
                   />
                 </div>
 
@@ -3825,7 +3825,7 @@ const TeacherStudioPage = ({ selectedUnitId, onBack, onNavigateClassrooms }) => 
                 <button
                   onClick={handleAssignUnitToClassrooms}
                   disabled={assigning || selectedClassroomIds.length === 0}
-                  className="btn-royal text-xs py-2 px-5 shadow-neon"
+                  className="btn-royal text-xs py-2 px-5 shadow-sm"
                 >
                   {assigning ? 'Assigning...' : 'Deploy to Selected Classes'}
                 </button>

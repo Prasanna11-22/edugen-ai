@@ -722,11 +722,11 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
     <div className="space-y-8 pb-20">
       
       {/* Student Welcome Banner */}
-      <div className="rounded-2xl glass-panel-accent p-6 sm:p-7 border border-neon-orange/30 shadow-neon flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-neon-orange via-neon-amber to-neon-gold" />
+      <div className="rounded-2xl glass-panel-accent p-6 sm:p-7 border border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-600 via-brand-500 to-neon-gold" />
         <div className="space-y-2.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-mono uppercase tracking-widest text-neon-amber font-bold">
+            <span className="text-[11px] font-mono uppercase tracking-widest text-brand-300 font-bold">
               Domain Learning Portal
             </span>
             <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-dark-950 text-slate-300 border border-slate-800">
@@ -735,7 +735,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
           </div>
           <div>
             <h1 className="text-2xl sm:text-3xl font-black text-white">
-              Welcome, <span className="text-neon-glow">{user?.name}</span>
+              Welcome, <span className="text-brand-200">{user?.name}</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
               Access your study packs, adaptive practice tests, and formative assessments.
@@ -784,14 +784,14 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       {/* STUDENT SKILL PROFILE & ADAPTIVE EVALUATED LEVEL CARD */}
       {/* ========================================================================= */}
       {savedProfileReport ? (
-        <div className="rounded-2xl glass-panel-accent p-5 sm:p-6 border border-sky-500/30 shadow-neon bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden">
+        <div className="rounded-2xl glass-panel-accent p-5 sm:p-6 border border-sky-500/30 shadow-sm bg-gradient-to-r from-dark-900 via-dark-950 to-dark-900 flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative overflow-hidden">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400">
                 Evaluated Skill Profile
               </span>
               {savedProfileReport.unit_title && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-950 text-neon-amber border border-slate-800">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-dark-950 text-brand-300 border border-slate-800">
                   {savedProfileReport.unit_title}
                 </span>
               )}
@@ -826,7 +826,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
               {/* Medium Bar */}
               <div className="bg-dark-950/90 border border-slate-800 p-2.5 rounded-xl min-w-[90px] text-center">
-                <span className="text-[10px] font-mono text-neon-amber uppercase font-bold block">Medium</span>
+                <span className="text-[10px] font-mono text-brand-300 uppercase font-bold block">Medium</span>
                 <span className="text-sm font-bold text-white font-mono">
                   {savedProfileReport.tier_breakdown?.medium?.correct || 0}/{savedProfileReport.tier_breakdown?.medium?.total || 0}
                 </span>
@@ -906,9 +906,9 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-neon-orange" /> Filter Academic Domain & Subject:
+              <Layers className="w-4 h-4 text-brand-400" /> Filter Academic Domain & Subject:
             </span>
-            <span className="text-[11px] font-mono text-neon-amber">
+            <span className="text-[11px] font-mono text-brand-300">
               {classrooms.filter(c => c.status === 'approved').length} Active Domain(s)
               {classrooms.some(c => c.status === 'pending') && ` · ${classrooms.filter(c => c.status === 'pending').length} Pending`}
             </span>
@@ -938,7 +938,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 onClick={() => setSelectedClassId('all')}
                 className={`px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${
                   selectedClassId === 'all'
-                    ? 'bg-neon-orange text-white shadow-neon-sm'
+                    ? 'bg-brand-600 text-white shadow-sm'
                     : 'bg-dark-900 hover:bg-dark-850 text-slate-400 hover:text-white border border-slate-800'
                 }`}
               >
@@ -957,14 +957,14 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   className={`px-4 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2.5 ${
                     isPending
                       ? isSelected
-                        ? 'bg-amber-500 text-dark-950 font-bold shadow-neon-sm'
+                        ? 'bg-amber-500 text-dark-950 font-bold shadow-subtle'
                         : 'bg-dark-900 border border-amber-500/40 text-amber-200 hover:bg-amber-950/30'
                       : isSelected
-                      ? 'bg-neon-orange text-white shadow-neon-sm'
+                      ? 'bg-brand-600 text-white shadow-sm'
                       : 'bg-dark-900 hover:bg-dark-850 text-slate-300 hover:text-white border border-slate-800'
                   }`}
                 >
-                  <BookOpen className={`w-4 h-4 ${isPending ? (isSelected ? 'text-dark-950' : 'text-amber-400') : (isSelected ? 'text-white' : 'text-neon-orange')}`} />
+                  <BookOpen className={`w-4 h-4 ${isPending ? (isSelected ? 'text-dark-950' : 'text-amber-400') : (isSelected ? 'text-white' : 'text-brand-400')}`} />
                   <div>
                     <span className="font-bold">{c.subject || 'Domain'}</span>
                     <span className={`text-[10px] ml-1.5 font-mono ${isSelected ? (isPending ? 'text-dark-900' : 'text-white/80') : 'text-slate-400'}`}>
@@ -992,13 +992,13 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
             }`}>
               <div className="flex items-center gap-2.5">
                 <span className={`w-2.5 h-2.5 rounded-full ${activeClassroom.status === 'pending' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400 animate-pulse'}`} />
-                <span>Active Domain: <strong className="text-white text-neon-glow">{activeClassroom.subject}</strong></span>
+                <span>Active Domain: <strong className="text-white text-brand-200">{activeClassroom.subject}</strong></span>
                 <span className="text-slate-500">•</span>
                 <span>Classroom: <strong className="text-slate-200">{activeClassroom.name}</strong></span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-[11px] font-mono text-slate-400">
-                  Instructor: <strong className="text-neon-amber">{activeClassroom.teacher_name}</strong>
+                  Instructor: <strong className="text-brand-300">{activeClassroom.teacher_name}</strong>
                 </div>
                 {activeClassroom.status === 'pending' && (
                   <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold uppercase">
@@ -1028,13 +1028,13 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               onClick={() => setSelectedCategory(tab.id)}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${
                 isActive
-                  ? 'bg-dark-850 text-neon-orange border border-neon-orange/40 shadow-neon-sm'
+                  ? 'bg-dark-850 text-brand-400 border border-slate-800 shadow-subtle'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-dark-900'
               }`}
             >
-              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-neon-orange' : 'text-slate-400'}`} />
+              <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-brand-400' : 'text-slate-400'}`} />
               <span>{tab.label}</span>
-              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${isActive ? 'bg-neon-orange/20 text-neon-glow font-bold' : 'bg-dark-950 text-slate-500'}`}>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${isActive ? 'bg-brand-600/20 text-brand-200 font-bold' : 'bg-dark-950 text-slate-500'}`}>
                 {tab.count}
               </span>
             </button>
@@ -1049,7 +1049,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
         <div className="space-y-4">
           <div className="flex items-center justify-between pb-1 border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-neon-orange" />
+              <BookOpen className="w-5 h-5 text-brand-400" />
               <div>
                 <h2 className="text-lg font-bold text-white">Approved Full Study Packs</h2>
                 <p className="text-xs text-slate-400">Comprehensive curriculum notes, step-by-step worked solutions, high-yield rules, and glossary</p>
@@ -1081,18 +1081,18 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 <div
                   key={m.unit_id || m.version_id}
                   onClick={() => onViewMaterial(m, 'all')}
-                  className="rounded-2xl glass-panel p-5 sm:p-6 border border-slate-800/90 hover:border-neon-orange/50 transition-all cursor-pointer group space-y-3.5 relative overflow-hidden bg-dark-900/80 hover:bg-dark-900 flex flex-col justify-between"
+                  className="rounded-2xl glass-panel p-5 sm:p-6 border border-slate-800/90 hover:border-brand-500/30 transition-all cursor-pointer group space-y-3.5 relative overflow-hidden bg-dark-900/80 hover:bg-dark-900 flex flex-col justify-between"
                 >
                   <div className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-brand-600/15 text-brand-400 border border-slate-800 uppercase">
                             {m.subject || m.domain || 'Domain'} Pack
                           </span>
                           <span className="text-[11px] font-mono text-slate-400">{m.unit_title}</span>
                         </div>
-                        <h4 className="text-base font-bold text-white group-hover:text-neon-glow transition-colors">
+                        <h4 className="text-base font-bold text-white group-hover:text-brand-200 transition-colors">
                           {m.content?.title || `Complete Study Pack: ${m.unit_title}`}
                         </h4>
                       </div>
@@ -1109,10 +1109,10 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                         <FileCheck className="w-3 h-3 text-emerald-400" /> Explanation
                       </span>
                       <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3 text-neon-orange" /> Worked Steps
+                        <CheckCircle2 className="w-3 h-3 text-brand-400" /> Worked Steps
                       </span>
                       <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
-                        <Award className="w-3 h-3 text-neon-amber" /> Revision & Rules
+                        <Award className="w-3 h-3 text-brand-300" /> Revision & Rules
                       </span>
                       {m.content?.glossary && m.content.glossary.length > 0 && (
                         <span className="px-2.5 py-1 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 font-medium flex items-center gap-1">
@@ -1136,17 +1136,17 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       >
                         {downloadingPackId === (m.unit_id || m.version_id) ? (
                           <>
-                            <RefreshCw className="w-3 h-3 animate-spin text-neon-orange" />
+                            <RefreshCw className="w-3 h-3 animate-spin text-brand-400" />
                             <span>PDF...</span>
                           </>
                         ) : (
                           <>
-                            <Download className="w-3 h-3 text-neon-orange" />
+                            <Download className="w-3 h-3 text-brand-400" />
                             <span>PDF</span>
                           </>
                         )}
                       </button>
-                      <span className="text-neon-orange group-hover:text-neon-amber font-bold flex items-center gap-1 text-xs">
+                      <span className="text-brand-400 group-hover:text-brand-300 font-bold flex items-center gap-1 text-xs">
                         Open Pack <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                       </span>
                     </div>
@@ -1188,7 +1188,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               }}
               className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                 practiceSubTab === 'diagnostic'
-                  ? 'bg-sky-500 text-black shadow-neon-sm font-black'
+                  ? 'bg-sky-500 text-black shadow-subtle font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -1202,7 +1202,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               }}
               className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
                 practiceSubTab === 'custom'
-                  ? 'bg-neon-orange text-white shadow-neon-sm font-black'
+                  ? 'bg-brand-600 text-white shadow-sm font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -1218,9 +1218,9 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
               {/* CASE 1: EVALUATION REPORT DISPLAY */}
               {adaptiveFinished && adaptiveEvaluation && (
-                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-neon space-y-6 animate-in fade-in bg-dark-900/95">
+                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-sm space-y-6 animate-in fade-in bg-dark-900/95">
                   {/* Report Header Card */}
-                  <div className="rounded-2xl p-6 bg-gradient-to-r from-dark-950 via-slate-900 to-dark-950 border border-sky-500/40 shadow-neon flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                  <div className="rounded-2xl p-6 bg-gradient-to-r from-dark-950 via-slate-900 to-dark-950 border border-sky-500/40 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                     <div className="flex items-start sm:items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-purple-600 flex flex-col items-center justify-center text-white shadow-[0_0_20px_rgba(56,189,248,0.35)] shrink-0">
                         <Trophy className="w-7 h-7 text-white" />
@@ -1232,7 +1232,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                         </span>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-xl sm:text-2xl font-black text-white">
-                            Your Evaluated Level: <span className="text-neon-glow">{adaptiveEvaluation.level?.title}</span>
+                            Your Evaluated Level: <span className="text-brand-200">{adaptiveEvaluation.level?.title}</span>
                           </h3>
                         </div>
                         <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
@@ -1253,7 +1253,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       <button
                         type="button"
                         onClick={handleResetAdaptiveTest}
-                        className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold flex items-center justify-center gap-2 transition shadow-neon-sm"
+                        className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold flex items-center justify-center gap-2 transition shadow-subtle"
                       >
                         <Check className="w-3.5 h-3.5 text-black" /> Done
                       </button>
@@ -1284,8 +1284,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     {/* Medium Tier Card */}
                     <div className="p-4 rounded-2xl bg-dark-950 border border-slate-800 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono font-bold text-neon-amber flex items-center gap-1.5 uppercase">
-                          <Target className="w-4 h-4 text-neon-amber" /> Medium Tier (Application)
+                        <span className="text-xs font-mono font-bold text-brand-300 flex items-center gap-1.5 uppercase">
+                          <Target className="w-4 h-4 text-brand-300" /> Medium Tier (Application)
                         </span>
                         <span className="text-sm font-bold text-white font-mono">
                           {adaptiveEvaluation.tier_breakdown?.medium?.correct}/{adaptiveEvaluation.tier_breakdown?.medium?.total} ({adaptiveEvaluation.tier_breakdown?.medium?.percent}%)
@@ -1373,7 +1373,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                               <p className="text-[11px] text-slate-400 leading-relaxed">{area.feedback}</p>
                               {area.mistakes?.[0] && (
                                 <div className="p-2 rounded-lg bg-dark-950 border border-slate-800 text-[10px] text-slate-300 space-y-0.5">
-                                  <span className="text-neon-amber font-mono font-bold block">Correction Key:</span>
+                                  <span className="text-brand-300 font-mono font-bold block">Correction Key:</span>
                                   <span className="text-slate-300">{area.mistakes[0].rationale}</span>
                                 </div>
                               )}
@@ -1422,7 +1422,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
               {/* CASE 2: ACTIVE ADAPTIVE TEST RUNNER */}
               {adaptiveActive && adaptiveQuestion && !adaptiveFinished && (
-                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-neon space-y-6 animate-in fade-in bg-dark-900/95">
+                <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-sm space-y-6 animate-in fade-in bg-dark-900/95">
                   {/* Status Bar */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
                     <div className="space-y-1">
@@ -1435,7 +1435,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                           adaptiveCurrentTier === 'Easy'
                             ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/40'
                             : adaptiveCurrentTier === 'Medium'
-                            ? 'bg-amber-950/80 text-neon-amber border-neon-amber/40'
+                            ? 'bg-amber-950/80 text-brand-300 border-neon-amber/40'
                             : 'bg-rose-950/80 text-rose-400 border-rose-500/40 animate-pulse'
                         }`}>
                           <Target className="w-3 h-3" /> Current Tier: {adaptiveCurrentTier}
@@ -1582,7 +1582,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                         type="button"
                         onClick={handleVerifyAdaptiveAnswer}
                         disabled={!adaptiveSelectedOpt}
-                        className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-extrabold text-xs shadow-neon flex items-center gap-2 transition"
+                        className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-extrabold text-xs shadow-sm flex items-center gap-2 transition"
                       >
                         <Check className="w-4 h-4 text-black" /> Verify & Continue
                       </button>
@@ -1614,7 +1614,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
               {/* CASE 3: DIAGNOSTIC LAUNCHER & CONFIGURATION CARD */}
               {!adaptiveActive && !adaptiveFinished && (
-                <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-sky-500/30 shadow-neon space-y-6 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
+                <div className="rounded-3xl glass-panel-accent p-6 sm:p-8 border border-sky-500/30 shadow-sm space-y-6 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
                   <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -1630,7 +1630,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs font-mono text-neon-amber bg-dark-950 px-3.5 py-2 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-2 text-xs font-mono text-brand-300 bg-dark-950 px-3.5 py-2 rounded-xl border border-slate-800">
                       <Clock className="w-3.5 h-3.5" /> 9 Adaptive Questions
                     </div>
                   </div>
@@ -1644,7 +1644,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     </div>
 
                     <div className="p-3.5 rounded-xl bg-dark-950 border border-slate-800 space-y-1.5">
-                      <span className="text-[10px] font-mono text-neon-amber font-bold uppercase block">2. Level Up ⬆️</span>
+                      <span className="text-[10px] font-mono text-brand-300 font-bold uppercase block">2. Level Up ⬆️</span>
                       <h4 className="font-bold text-white text-xs">Medium Application Tier</h4>
                       <p className="text-[11px] text-slate-400">2 consecutive correct answers elevate difficulty to scenario problem solving.</p>
                     </div>
@@ -1760,7 +1760,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
             <div className="space-y-6">
 
               {/* Generator Control Card */}
-              <div className="rounded-3xl glass-panel-accent p-6 border border-sky-500/30 shadow-neon space-y-5 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
+              <div className="rounded-3xl glass-panel-accent p-6 border border-sky-500/30 shadow-sm space-y-5 relative overflow-hidden bg-gradient-to-b from-dark-900 via-dark-950 to-dark-950">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-3 border-b border-slate-800">
               <div className="space-y-1">
                 <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
@@ -1800,7 +1800,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               {/* 2. Difficulty Level */}
               <div className="space-y-1.5">
                 <label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <Target className="w-3.5 h-3.5 text-neon-amber" /> Difficulty Level:
+                  <Target className="w-3.5 h-3.5 text-brand-300" /> Difficulty Level:
                 </label>
                 <div className="grid grid-cols-3 gap-1 bg-dark-900 p-1 rounded-xl border border-slate-800">
                   {['Easy', 'Medium', 'Hard'].map((d) => (
@@ -1826,7 +1826,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   <span className="flex items-center gap-1.5">
                     <CheckSquare className="w-3.5 h-3.5 text-emerald-400" /> Number of Questions:
                   </span>
-                  <span className="text-[11px] font-mono text-neon-orange font-bold">{selectedQuestionCount} Qs</span>
+                  <span className="text-[11px] font-mono text-brand-400 font-bold">{selectedQuestionCount} Qs</span>
                 </label>
                 <div className="grid grid-cols-6 gap-1 bg-dark-900 p-1 rounded-xl border border-slate-800">
                   {[3, 5, 8, 10, 15, 20].map((num) => (
@@ -1836,7 +1836,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       onClick={() => setSelectedQuestionCount(num)}
                       className={`py-1.5 rounded-lg font-bold text-[11px] font-mono transition-all ${
                         selectedQuestionCount === num
-                          ? 'bg-neon-orange text-white shadow-sm font-black'
+                          ? 'bg-brand-600 text-white shadow-sm font-black'
                           : 'text-slate-400 hover:text-white hover:bg-dark-800'
                       }`}
                     >
@@ -1936,7 +1936,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
           {/* ACTIVE GENERATED SELF-PACED TEST INTERACTIVE VIEWER */}
           {activeSelfPacedTest && (
-            <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-neon space-y-6 animate-in fade-in bg-dark-900/95">
+            <div className="rounded-3xl glass-panel p-6 sm:p-8 border border-sky-500/50 shadow-sm space-y-6 animate-in fade-in bg-dark-900/95">
               
               {/* Test Header & Practice Tracker */}
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
@@ -1945,7 +1945,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-500/20 text-sky-400 border border-sky-500/40 uppercase">
                       {activeSelfPacedTest.topic} AI Practice Set
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-dark-950 text-neon-amber border border-slate-700">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-dark-950 text-brand-300 border border-slate-700">
                       Difficulty: {activeSelfPacedTest.difficulty}
                     </span>
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30">
@@ -1981,7 +1981,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
 
               {/* POST-SUBMIT SCORECARD BANNER */}
               {selfPacedSubmitted && (
-                <div className="rounded-2xl p-6 bg-gradient-to-r from-dark-950 via-slate-900 to-dark-950 border border-sky-500/40 shadow-neon flex flex-col md:flex-row items-center justify-between gap-6 animate-in fade-in">
+                <div className="rounded-2xl p-6 bg-gradient-to-r from-dark-950 via-slate-900 to-dark-950 border border-sky-500/40 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6 animate-in fade-in">
                   <div className="flex items-center gap-4">
                     <div className={`w-16 h-16 rounded-2xl flex flex-col items-center justify-center font-mono font-black border ${
                       selfPacedScorePercent >= 80 
@@ -1995,7 +1995,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <Award className={`w-5 h-5 ${selfPacedScorePercent >= 80 ? 'text-emerald-400' : 'text-neon-amber'}`} />
+                        <Award className={`w-5 h-5 ${selfPacedScorePercent >= 80 ? 'text-emerald-400' : 'text-brand-300'}`} />
                         <h4 className="text-lg font-black text-white">
                           {selfPacedScorePercent >= 80 
                             ? 'Practice Mastery Achieved! 🎉' 
@@ -2022,7 +2022,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       type="button"
                       onClick={() => handleGenerateSelfPacedTest()}
                       disabled={generatingSelfPaced}
-                      className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold flex items-center justify-center gap-2 transition shadow-neon-sm"
+                      className="flex-1 md:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black text-xs font-bold flex items-center justify-center gap-2 transition shadow-subtle"
                     >
                       <Sparkles className="w-3.5 h-3.5 text-black" /> Generate Another Set
                     </button>
@@ -2053,7 +2053,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                           onClick={() => setSelectedQuestionCount(num)}
                           className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition ${
                             selectedQuestionCount === num
-                              ? 'bg-neon-orange text-white'
+                              ? 'bg-brand-600 text-white'
                               : 'text-slate-400 hover:text-white'
                           }`}
                         >
@@ -2136,7 +2136,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                             )
                           )}
                           {q.difficulty_tier && (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-neon-amber">
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-dark-900 border border-slate-700 text-brand-300">
                               {q.difficulty_tier}
                             </span>
                           )}
@@ -2224,8 +2224,8 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       {selfPacedSubmitted && (q.rationale || q.citation) && (
                         <div className="pl-0 sm:pl-10 pt-2 animate-in fade-in">
                           <div className="p-4 rounded-xl bg-dark-900 border border-sky-500/20 space-y-2 text-xs">
-                            <div className="flex items-center gap-2 text-neon-amber font-semibold">
-                              <Sparkles className="w-3.5 h-3.5 text-neon-amber" />
+                            <div className="flex items-center gap-2 text-brand-300 font-semibold">
+                              <Sparkles className="w-3.5 h-3.5 text-brand-300" />
                               <span>Step Rationale & Concept Explanation:</span>
                             </div>
                             <p className="text-slate-300 font-sans leading-relaxed">
@@ -2293,7 +2293,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                         type="button"
                         onClick={() => handleGenerateSelfPacedTest()}
                         disabled={generatingSelfPaced}
-                        className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-neon-sm flex items-center justify-center gap-2 transition"
+                        className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-black font-bold text-xs shadow-subtle flex items-center justify-center gap-2 transition"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-black" /> Generate Another Set
                       </button>
@@ -2316,7 +2316,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
         <div className="space-y-4">
           <div className="flex items-center justify-between pb-1 border-b border-slate-800">
             <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-neon-orange" />
+              <Clock className="w-5 h-5 text-brand-400" />
               <div>
                 <h2 className="text-lg font-bold text-white">Formative Assessments (Assigned Tests)</h2>
                 <p className="text-xs text-slate-400">Formal instructor-assigned tests with timed examination limits and verified mastery scoring</p>
@@ -2347,18 +2347,18 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               {displayedAssignments.map((a) => (
                 <div
                   key={a.assignment_id}
-                  className="rounded-2xl glass-panel p-5 border border-slate-800 hover:border-neon-orange/40 transition-all space-y-3 bg-dark-900/80 hover:bg-dark-900 flex flex-col justify-between"
+                  className="rounded-2xl glass-panel p-5 border border-slate-800 hover:border-slate-800 transition-all space-y-3 bg-dark-900/80 hover:bg-dark-900 flex flex-col justify-between"
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-brand-600/15 text-brand-400 border border-slate-800 uppercase">
                             {a.subject || a.domain || 'Domain Assessment'}
                           </span>
                           <span className="text-[11px] font-mono text-slate-400">{a.unit_title}</span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-dark-950 border border-slate-700 text-neon-glow flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-neon-orange" /> {a.time_limit_minutes || 15} Mins
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-dark-950 border border-slate-700 text-brand-200 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-brand-400" /> {a.time_limit_minutes || 15} Mins
                           </span>
                         </div>
                         <h4 className="text-base font-bold text-white">{a.title}</h4>
@@ -2375,7 +2375,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     {a.latest_submission && (
                       <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-xs flex items-center justify-between">
                         <span className="text-slate-400">Latest Mastery Index:</span>
-                        <span className="font-bold text-neon-glow font-mono text-sm">{a.latest_submission.score}%</span>
+                        <span className="font-bold text-brand-200 font-mono text-sm">{a.latest_submission.score}%</span>
                       </div>
                     )}
                   </div>
@@ -2388,7 +2388,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     {a.can_attempt ? (
                       <button
                         onClick={() => setConfirmingAssessment(a)}
-                        className="px-4 py-2 rounded-xl bg-neon-orange hover:bg-neon-amber text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition-all active:scale-95"
+                        className="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold shadow-subtle flex items-center gap-1.5 transition-all active:scale-95"
                       >
                         Attempt Assessment <ArrowRight className="w-3.5 h-3.5" />
                       </button>
@@ -2443,7 +2443,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                     onClick={() => setStudentRequestFilter(f.id)}
                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
                       studentRequestFilter === f.id
-                        ? 'bg-purple-600 text-white shadow-neon-sm font-semibold'
+                        ? 'bg-purple-600 text-white shadow-subtle font-semibold'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -2459,7 +2459,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   }
                   setShowCreateRequestModal(true);
                 }}
-                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 transition-all"
+                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-subtle flex items-center gap-1.5 transition-all"
               >
                 <Plus className="w-3.5 h-3.5" /> Request Course Notes
               </button>
@@ -2557,11 +2557,11 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                                   href={resp.file_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="mt-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-emerald-500/40 hover:border-neon-orange text-emerald-300 hover:text-white transition-all text-xs font-mono group"
+                                  className="mt-1.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-900 border border-emerald-500/40 hover:border-brand-500/50 text-emerald-300 hover:text-white transition-all text-xs font-mono group"
                                 >
-                                  <FileText className="w-3.5 h-3.5 text-neon-orange" />
+                                  <FileText className="w-3.5 h-3.5 text-brand-400" />
                                   <span className="font-semibold underline decoration-dotted">{resp.file_name || 'Download Attached Notes / PDF'}</span>
-                                  <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-neon-orange" />
+                                  <Download className="w-3.5 h-3.5 ml-1 text-slate-400 group-hover:text-brand-400" />
                                 </a>
                               )}
                             </div>
@@ -2591,9 +2591,9 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       {/* Join Classroom Modal */}
       {showJoinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-neon-orange/40 shadow-neon">
+          <div className="w-full max-w-md rounded-2xl glass-panel-accent p-6 border border-slate-800 shadow-sm">
             <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-              <GraduationCap className="w-5 h-5 text-neon-orange" /> Request Classroom Join Permission
+              <GraduationCap className="w-5 h-5 text-brand-400" /> Request Classroom Join Permission
             </h3>
             <p className="text-xs text-slate-300 mb-4">
               Enter the 6-character uppercase code provided by your instructor. Your join request will be sent to the instructor for permission and approval.
@@ -2616,7 +2616,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                   placeholder="e.g. BIO101"
                   required
                   maxLength={12}
-                  className="w-full rounded-xl glass-input p-3 text-center text-lg font-mono tracking-widest uppercase font-bold text-neon-amber"
+                  className="w-full rounded-xl glass-input p-3 text-center text-lg font-mono tracking-widest uppercase font-bold text-brand-300"
                 />
               </div>
 
@@ -2644,7 +2644,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       {/* Create Course Notes Request Modal */}
       {showCreateRequestModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-lg rounded-2xl glass-panel-accent p-6 border border-purple-500/40 shadow-neon space-y-4">
+          <div className="w-full max-w-lg rounded-2xl glass-panel-accent p-6 border border-purple-500/40 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <MessageSquarePlus className="w-5 h-5 text-purple-400" /> Request Course Notes / Report Material
@@ -2724,7 +2724,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                       onClick={() => setRequestCategoryType(cat)}
                       className={`p-2.5 rounded-xl text-xs font-medium text-left border transition-all ${
                         requestCategoryType === cat
-                          ? 'bg-purple-600/30 text-purple-200 border-purple-500 shadow-neon-sm font-semibold'
+                          ? 'bg-purple-600/30 text-purple-200 border-purple-500 shadow-subtle font-semibold'
                           : 'bg-dark-900/60 text-slate-400 border-slate-800 hover:border-slate-700'
                       }`}
                     >
@@ -2774,7 +2774,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 <button
                   type="submit"
                   disabled={submittingRequest}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-neon-sm flex items-center gap-1.5 disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-subtle flex items-center gap-1.5 disabled:opacity-50"
                 >
                   {submittingRequest ? 'Submitting...' : 'Send Request to Instructor'}
                 </button>
@@ -2787,11 +2787,11 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
       {/* Formative Assessment Attempt Confirmation Modal */}
       {confirmingAssessment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-dark-950/85 backdrop-blur-md animate-fade-in">
-          <div className="bg-dark-900 border border-neon-orange/40 rounded-3xl shadow-2xl shadow-neon-orange/20 max-w-lg w-full overflow-hidden flex flex-col">
+          <div className="bg-dark-900 border border-slate-800 rounded-3xl shadow-2xl shadow-sm-orange/20 max-w-lg w-full overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="px-6 py-5 bg-gradient-to-r from-neon-orange/20 via-dark-900 to-dark-900 border-b border-slate-800 flex items-center justify-between">
+            <div className="px-6 py-5 bg-gradient-to-r from-brand-600/20 via-dark-900 to-dark-900 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-neon-orange/20 border border-neon-orange/40 flex items-center justify-center text-neon-orange shadow-neon-sm">
+                <div className="w-10 h-10 rounded-2xl bg-brand-600/20 border border-slate-800 flex items-center justify-center text-brand-400 shadow-subtle">
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
@@ -2812,7 +2812,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               {/* Assessment Card Info */}
               <div className="p-4 rounded-2xl bg-dark-950/90 border border-slate-800 space-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-neon-orange/15 text-neon-orange border border-neon-orange/30 uppercase">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-brand-600/15 text-brand-400 border border-slate-800 uppercase">
                     {confirmingAssessment.subject || confirmingAssessment.domain || 'Domain Assessment'}
                   </span>
                   <span className="text-[11px] font-mono text-slate-400">{confirmingAssessment.unit_title}</span>
@@ -2825,7 +2825,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center space-y-0.5">
                   <span className="text-[10px] text-slate-400 font-mono block">TIME LIMIT</span>
                   <span className="text-sm font-bold text-white font-mono flex items-center justify-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-neon-orange" />
+                    <Clock className="w-3.5 h-3.5 text-brand-400" />
                     {confirmingAssessment.time_limit_minutes || 15}m
                   </span>
                 </div>
@@ -2837,7 +2837,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
                 </div>
                 <div className="p-3 rounded-xl bg-dark-950 border border-slate-800 text-center space-y-0.5">
                   <span className="text-[10px] text-slate-400 font-mono block">ATTEMPTS</span>
-                  <span className="text-sm font-bold text-neon-amber font-mono">
+                  <span className="text-sm font-bold text-brand-300 font-mono">
                     {confirmingAssessment.attempts_remaining !== undefined ? confirmingAssessment.attempts_remaining : (confirmingAssessment.max_attempts - (confirmingAssessment.attempts_used || 0))} Left
                   </span>
                 </div>
@@ -2868,7 +2868,7 @@ const StudentDashboard = ({ onTakeAssessment, onViewMaterial }) => {
               <button
                 type="button"
                 onClick={handleConfirmStartAssessment}
-                className="btn-royal text-xs px-5 py-2.5 shadow-neon flex items-center gap-2 font-bold active:scale-95"
+                className="btn-royal text-xs px-5 py-2.5 shadow-sm flex items-center gap-2 font-bold active:scale-95"
               >
                 Confirm & Start Assessment <ArrowRight className="w-3.5 h-3.5" />
               </button>

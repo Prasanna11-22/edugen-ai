@@ -34,14 +34,14 @@ const TeacherSignupPage = ({ onNavigate }) => {
       
       {/* Brand Header */}
       <div className="text-center mb-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-neon-bright to-neon-orange p-1.5 shadow-neon mx-auto mb-4 flex items-center justify-center">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-700 to-brand-600 p-1.5 shadow-sm mx-auto mb-4 flex items-center justify-center">
           <RetrievoIcon className="w-10 h-10 drop-shadow-md" />
         </div>
         <h2 className="text-2xl font-bold text-white">Teacher Registration</h2>
         <p className="text-xs text-slate-400 mt-1">Gated educator studio access with administrative approval flow</p>
       </div>
 
-      <div className="rounded-3xl glass-panel-accent p-8 border border-neon-orange/30 shadow-neon">
+      <div className="rounded-3xl glass-panel-accent p-8 border border-slate-800 shadow-sm">
         {submitted ? (
           <div className="text-center space-y-4 py-4 animate-in fade-in">
             <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto shadow-[0_0_20px_rgba(245,158,11,0.3)]">
@@ -55,7 +55,7 @@ const TeacherSignupPage = ({ onNavigate }) => {
             <h3 className="text-lg font-bold text-white">Registration Submitted!</h3>
             
             <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-              Your educator account for <b className="text-neon-amber">{email}</b> has been queued for administrator verification. You will be able to log in immediately once approved.
+              Your educator account for <b className="text-brand-300">{email}</b> has been queued for administrator verification. You will be able to log in immediately once approved.
             </p>
 
             <div className="pt-4 flex flex-col gap-2">
@@ -138,7 +138,7 @@ const TeacherSignupPage = ({ onNavigate }) => {
                   title={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-neon-orange" />
+                    <EyeOff className="w-4 h-4 text-brand-400" />
                   ) : (
                     <Eye className="w-4 h-4" />
                   )}
